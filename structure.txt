@@ -1,0 +1,65 @@
+.
+├── ai-agents
+│   ├── __init__.py
+│   ├── agent_system.py
+│   ├── analyze_metrics_example.py
+│   ├── Dockerfile
+│   ├── ingest_knowledge.py
+│   ├── knowledge
+│   │   ├── best_practices
+│   │   │   ├── performance_tuning.md
+│   │   │   └── troubleshooting.md
+│   │   ├── incidents
+│   │   │   ├── incident_2023_01_15.md
+│   │   │   └── postmortem_template.md
+│   │   ├── logs
+│   │   │   ├── example_logs.txt
+│   │   │   └── log_analysis_patterns.md
+│   │   └── README.md
+│   ├── llamaindex_qdrant.py
+│   ├── main.py
+│   ├── metric_analysis_result.txt
+│   ├── monitoring_tools.py
+│   ├── README.md
+│   └── test.py
+├── ai-monitoring-demo.postman_collection.json
+├── app
+│   ├── __init__.py
+│   ├── api
+│   │   ├── __init__.py
+│   │   └── main.py
+│   └── Dockerfile
+├── docker-compose.yml
+├── grafana
+│   └── provisioning
+│       ├── dashboards
+│       │   └── ai_monitoring.json
+│       └── datasources
+│           └── prometheus.yml
+├── k8s-manifests
+│   ├── cleanup.sh
+│   ├── configmap.yaml
+│   ├── create-hpa.sh
+│   ├── debug-image.sh
+│   ├── deploy.sh
+│   ├── deployment.yaml
+│   ├── describe-pod.sh
+│   ├── generate-load.sh
+│   ├── get-url.sh
+│   ├── hpa.yaml
+│   ├── logs.sh
+│   ├── monitor-hpa.sh
+│   ├── port-forward.sh
+│   ├── README.md
+│   ├── restart.sh
+│   ├── scale.sh
+│   ├── secret.yaml
+│   ├── service.yaml
+│   ├── setup-env.sh
+│   └── status.sh
+├── prometheus
+│   ├── alerts.yml
+│   └── prometheus.yml
+├── README.md
+├── requirements.txt
+

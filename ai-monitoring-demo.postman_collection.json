@@ -1,0 +1,166 @@
+{
+	"info": {
+		"_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+		"name": "AI Monitoring Demo",
+		"description": "Collection for demonstrating the AI-Enhanced Monitoring System",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Health Check",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8000/health",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"health"
+					]
+				},
+				"description": "Check if the API service is healthy"
+			},
+			"response": []
+		},
+		{
+			"name": "Analyze Normal Metrics",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"metrics\": [\n        {\n            \"name\": \"example_app_requests_total\",\n            \"value\": 150,\n            \"labels\": {\n                \"method\": \"GET\",\n                \"endpoint\": \"/items\",\n                \"status\": \"200\"\n            },\n            \"timestamp\": 1647123456.789\n        },\n        {\n            \"name\": \"example_app_request_duration_seconds\",\n            \"value\": 0.15,\n            \"labels\": {\n                \"method\": \"GET\",\n                \"endpoint\": \"/items\"\n            },\n            \"timestamp\": 1647123456.789\n        },\n        {\n            \"name\": \"example_app_errors_total\",\n            \"value\": 2,\n            \"labels\": {\n                \"method\": \"GET\",\n                \"endpoint\": \"/items\",\n                \"error_type\": \"timeout\"\n            },\n            \"timestamp\": 1647123456.789\n        },\n        {\n            \"name\": \"example_app_active_users\",\n            \"value\": 15,\n            \"labels\": {},\n            \"timestamp\": 1647123456.789\n        },\n        {\n            \"name\": \"example_app_active_requests\",\n            \"value\": 5,\n            \"labels\": {\n                \"method\": \"GET\"\n            },\n            \"timestamp\": 1647123456.789\n        }\n    ]\n}"
+				},
+				"url": {
+					"raw": "http://localhost:8000/analyze",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"analyze"
+					]
+				},
+				"description": "Analyze normal metrics pattern"
+			},
+			"response": []
+		},
+		{
+			"name": "Analyze Spike Anomaly",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"metrics\": [\n        {\n            \"name\": \"example_app_requests_total\",\n            \"value\": 150,\n            \"labels\": {\n                \"method\": \"GET\",\n                \"endpoint\": \"/items\",\n                \"status\": \"200\"\n            },\n            \"timestamp\": 1647123456.789\n        },\n        {\n            \"name\": \"example_app_requests_total\",\n            \"value\": 50,\n            \"labels\": {\n                \"method\": \"GET\",\n                \"endpoint\": \"/items\",\n                \"status\": \"500\"\n            },\n            \"timestamp\": 1647123456.789\n        },\n        {\n            \"name\": \"example_app_request_duration_seconds\",\n            \"value\": 1.5,\n            \"labels\": {\n                \"method\": \"GET\",\n                \"endpoint\": \"/items\"\n            },\n            \"timestamp\": 1647123456.789\n        },\n        {\n            \"name\": \"example_app_errors_total\",\n            \"value\": 45,\n            \"labels\": {\n                \"method\": \"GET\",\n                \"endpoint\": \"/items\",\n                \"error_type\": \"timeout\"\n            },\n            \"timestamp\": 1647123456.789\n        },\n        {\n            \"name\": \"example_app_errors_total\",\n            \"value\": 30,\n            \"labels\": {\n                \"method\": \"GET\",\n                \"endpoint\": \"/error\",\n                \"error_type\": \"ValueError\"\n            },\n            \"timestamp\": 1647123456.789\n        },\n        {\n            \"name\": \"example_app_active_users\",\n            \"value\": 15,\n            \"labels\": {},\n            \"timestamp\": 1647123456.789\n        },\n        {\n            \"name\": \"example_app_active_requests\",\n            \"value\": 25,\n            \"labels\": {\n                \"method\": \"GET\"\n            },\n            \"timestamp\": 1647123456.789\n        }\n    ]\n}"
+				},
+				"url": {
+					"raw": "http://localhost:8000/analyze",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"analyze"
+					]
+				},
+				"description": "Analyze metrics with a spike anomaly pattern"
+			},
+			"response": []
+		},
+		{
+			"name": "Analyze Gradual Degradation",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"metrics\": [\n        {\n            \"name\": \"example_app_requests_total\",\n            \"value\": 150,\n            \"labels\": {\n                \"method\": \"GET\",\n                \"endpoint\": \"/items\",\n                \"status\": \"200\"\n            },\n            \"timestamp\": 1647123456.789\n        },\n        {\n            \"name\": \"example_app_requests_total\",\n            \"value\": 25,\n            \"labels\": {\n                \"method\": \"GET\",\n                \"endpoint\": \"/items\",\n                \"status\": \"500\"\n            },\n            \"timestamp\": 1647123456.789\n        },\n        {\n            \"name\": \"example_app_request_duration_seconds\",\n            \"value\": 0.85,\n            \"labels\": {\n                \"method\": \"GET\",\n                \"endpoint\": \"/items\"\n            },\n            \"timestamp\": 1647123456.789\n        },\n        {\n            \"name\": \"example_app_errors_total\",\n            \"value\": 20,\n            \"labels\": {\n                \"method\": \"GET\",\n                \"endpoint\": \"/items\",\n                \"error_type\": \"timeout\"\n            },\n            \"timestamp\": 1647123456.789\n        },\n        {\n            \"name\": \"example_app_errors_total\",\n            \"value\": 15,\n            \"labels\": {\n                \"method\": \"GET\",\n                \"endpoint\": \"/error\",\n                \"error_type\": \"ValueError\"\n            },\n            \"timestamp\": 1647123456.789\n        },\n        {\n            \"name\": \"example_app_active_users\",\n            \"value\": 15,\n            \"labels\": {},\n            \"timestamp\": 1647123456.789\n        },\n        {\n            \"name\": \"example_app_active_requests\",\n            \"value\": 15,\n            \"labels\": {\n                \"method\": \"GET\"\n            },\n            \"timestamp\": 1647123456.789\n        },\n        {\n            \"name\": \"example_app_processing_time_seconds\",\n            \"value\": 0.75,\n            \"labels\": {\n                \"endpoint\": \"/items\"\n            },\n            \"timestamp\": 1647123456.789\n        }\n    ]\n}"
+				},
+				"url": {
+					"raw": "http://localhost:8000/analyze",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"analyze"
+					]
+				},
+				"description": "Analyze metrics with a gradual degradation pattern"
+			},
+			"response": []
+		},
+		{
+			"name": "Query Knowledge Base",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"query\": \"What are common causes of high error rates?\",\n    \"top_k\": 5\n}"
+				},
+				"url": {
+					"raw": "http://localhost:8000/query",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"query"
+					]
+				},
+				"description": "Query the knowledge base"
+			},
+			"response": []
+		},
+		{
+			"name": "Refresh Knowledge Base",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8000/refresh-knowledge",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"refresh-knowledge"
+					]
+				},
+				"description": "Force a refresh of the knowledge base"
+			},
+			"response": []
+		}
+	]
+}
