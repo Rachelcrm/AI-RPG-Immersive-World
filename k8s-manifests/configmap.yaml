@@ -1,9 +1,0 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: ai-monitoring-config
-data:
-  PYTHONUNBUFFERED: "1"
-  PYTHONDONTWRITEBYTECODE: "1"
-  KNOWLEDGE_BASE_PATH: "/app/knowledge"
-  QDRANT_URL: "http://qdrant:6333"

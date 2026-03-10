@@ -1,0 +1,7 @@
+Django>=5.1,<6.0
+djangorestframework>=3.16,<4.0
+openai>=1.68.0
+python-dotenv>=1.0.1
+pymongo>=4.8.0
+psycopg[binary]>=3.2.0
+dj-database-url>=2.2.0
