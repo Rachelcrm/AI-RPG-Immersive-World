@@ -31,6 +31,43 @@ class World(TimeStampedModel):
         return self.name
 
 
+class Location(TimeStampedModel):
+    world = models.ForeignKey(World, on_delete=models.CASCADE, related_name='location_set')
+    name = models.CharField(max_length=120)
+    description = models.TextField(blank=True)
+    danger_level = models.PositiveSmallIntegerField(default=1)  # 1 (safe) .. 5 (deadly)
+    tags = models.JSONField(default=list, blank=True)
+
+    class Meta:
+        unique_together = ('world', 'name')
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class NPC(TimeStampedModel):
+    DISPOSITION_CHOICES = [
+        ('friendly', 'Friendly'),
+        ('neutral', 'Neutral'),
+        ('hostile', 'Hostile'),
+    ]
+
+    world = models.ForeignKey(World, on_delete=models.CASCADE, related_name='npcs')
+    name = models.CharField(max_length=120)
+    role = models.CharField(max_length=80, blank=True)
+    faction = models.CharField(max_length=120, blank=True)
+    location = models.CharField(max_length=120, blank=True)
+    disposition = models.CharField(max_length=20, choices=DISPOSITION_CHOICES, default='neutral')
+    description = models.TextField(blank=True)
+    is_alive = models.BooleanField(default=True)
+
+    class Meta:
+        unique_together = ('world', 'name')
+
+    def __str__(self) -> str:
+        return f'{self.name} ({self.role})'
+
+
 class Character(TimeStampedModel):
     world = models.ForeignKey(World, on_delete=models.CASCADE, related_name='characters')
     name = models.CharField(max_length=120)
@@ -61,6 +98,26 @@ class StorySession(TimeStampedModel):
 
     def __str__(self) -> str:
         return self.title
+
+
+class Encounter(TimeStampedModel):
+    KIND_CHOICES = [
+        ('combat', 'Combat'),
+        ('social', 'Social'),
+        ('puzzle', 'Puzzle'),
+        ('discovery', 'Discovery'),
+    ]
+
+    session = models.ForeignKey(StorySession, on_delete=models.CASCADE, related_name='encounters')
+    kind = models.CharField(max_length=20, choices=KIND_CHOICES, default='discovery')
+    title = models.CharField(max_length=160)
+    description = models.TextField(blank=True)
+    location = models.CharField(max_length=120, blank=True)
+    difficulty = models.PositiveSmallIntegerField(default=1)  # 1..5
+    is_resolved = models.BooleanField(default=False)
+
+    def __str__(self) -> str:
+        return f'{self.kind}: {self.title}'
 
 
 class Quest(TimeStampedModel):

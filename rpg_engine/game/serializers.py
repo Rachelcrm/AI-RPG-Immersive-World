@@ -5,7 +5,10 @@ from rest_framework import serializers
 from .models import (
     Book,
     Character,
+    Encounter,
     InventoryItem,
+    Location,
+    NPC,
     MarketItem,
     Merchant,
     MerchantInventory,
@@ -42,6 +45,32 @@ class WorldSerializer(serializers.ModelSerializer):
             'created_at',
         ]
         read_only_fields = ['id', 'created_at']
+
+
+class LocationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Location
+        fields = ['id', 'name', 'description', 'danger_level', 'tags']
+
+
+class NPCSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = NPC
+        fields = ['id', 'name', 'role', 'faction', 'location', 'disposition', 'description', 'is_alive']
+
+
+class EncounterSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Encounter
+        fields = ['id', 'session', 'kind', 'title', 'description', 'location', 'difficulty', 'is_resolved']
+
+
+class ComponentGenerateSerializer(serializers.Serializer):
+    kind = serializers.ChoiceField(choices=['location', 'npc', 'item', 'encounter'])
+    count = serializers.IntegerField(min_value=1, max_value=10, default=1)
+    hint = serializers.CharField(max_length=500, required=False, allow_blank=True, default='')
+    session_id = serializers.IntegerField(min_value=1, required=False)
+    spec = serializers.DictField(required=False)
 
 
 class CharacterCreateSerializer(serializers.ModelSerializer):

@@ -29,7 +29,9 @@ EVENT_TYPES = {
     'quest_complete',
     'quest_fail',
     'level_up',
+    'spawn',
 }
+SPAWNABLE_KINDS = {'npc', 'encounter', 'location'}
 
 MAX_DAMAGE_PER_TURN = 60
 MAX_HEAL_PER_TURN = 60
@@ -119,6 +121,16 @@ class EventRuleLayer:
                     )
             elif kind == 'level_up':
                 events.append(GameEvent(kind, {}))
+            elif kind == 'spawn':
+                spawn_kind = str(raw.get('kind', '')).strip().lower()
+                if spawn_kind not in SPAWNABLE_KINDS:
+                    continue
+                # Everything else in the dict is the component spec; the
+                # factory's own validate() cleans it.
+                spec = {k: v for k, v in raw.items() if k not in {'type', 'kind'}}
+                if spawn_kind == 'encounter' and 'encounter_kind' in spec:
+                    spec['kind'] = spec.pop('encounter_kind')
+                events.append(GameEvent(kind, {'kind': spawn_kind, 'spec': spec}))
         return events
 
 
@@ -250,6 +262,26 @@ class QuestObserver:
         quest.save(update_fields=['status', 'updated_at'])
 
 
+class SpawnObserver:
+    """Creates new game components mid-story through the component factories."""
+
+    def handles(self) -> set[str]:
+        return {'spawn'}
+
+    def on_event(self, event: GameEvent, ctx: TurnContext) -> None:
+        from game.services.factories import ComponentFactoryRegistry
+
+        kind, spec = event.payload['kind'], event.payload['spec']
+        try:
+            factory = ComponentFactoryRegistry.get(kind)
+            component = factory.create(world=ctx.session.world, spec=spec, session=ctx.session)
+        except ValueError:
+            return  # invalid spec: skip silently, narrative already happened
+        label = getattr(component, 'title', None) or getattr(component, 'name', '')
+        event.payload['id'] = component.id
+        ctx.notes.append(f'New {kind}: {label}.')
+
+
 class MongoEventObserver:
     """Persists every applied event to MongoDB as part of the interaction history."""
 
@@ -270,5 +302,6 @@ def build_default_bus() -> GameStateBus:
         .subscribe(CharacterObserver())
         .subscribe(InventoryObserver())
         .subscribe(QuestObserver())
+        .subscribe(SpawnObserver())
         .subscribe(MongoEventObserver())
     )

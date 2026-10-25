@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from django.db import transaction
 
-from game.models import Character, InventoryItem, Quest, StorySession
+from game.models import Character, Encounter, InventoryItem, NPC, Quest, StorySession
 from game.services.events import EventRuleLayer, GameEvent, GameStateBus, TurnContext, build_default_bus
 from game.services.mongo_service import MongoService
 from game.services.openai_service import OpenAIService
@@ -30,6 +30,10 @@ class StoryService:
     def state_snapshot(character: Character, session: StorySession) -> dict:
         inventory = InventoryItem.objects.filter(character=character).order_by('item_name')
         quests = Quest.objects.filter(session=session).order_by('id')
+        nearby_npcs = NPC.objects.filter(world=session.world, is_alive=True)
+        if character.current_location:
+            nearby_npcs = nearby_npcs.filter(location=character.current_location)
+        encounters = Encounter.objects.filter(session=session, is_resolved=False).order_by('id')
         return {
             'name': character.name,
             'role': character.role,
@@ -41,6 +45,11 @@ class StoryService:
             'status_effects': list(character.status_effects),
             'inventory': [{'item_name': i.item_name, 'quantity': i.quantity} for i in inventory],
             'quests': [{'title': q.title, 'status': q.status, 'reward_coins': q.reward_coins} for q in quests],
+            'known_locations': list(session.world.locations or []),
+            'nearby_npcs': [
+                {'name': n.name, 'role': n.role, 'disposition': n.disposition} for n in nearby_npcs.order_by('name')[:10]
+            ],
+            'active_encounters': [{'kind': e.kind, 'title': e.title, 'difficulty': e.difficulty} for e in encounters],
         }
 
     def play_turn(self, *, session: StorySession, user_input: str) -> TurnResult:

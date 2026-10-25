@@ -10,6 +10,7 @@ from .views import (
     SessionStartView,
     TradeExecuteView,
     TradeQuoteView,
+    WorldComponentGenerateView,
     WorldGenerateView,
 )
 
@@ -17,6 +18,11 @@ urlpatterns = [
     path('health/', HealthView.as_view(), name='health'),
     path('books/upload/', BookUploadView.as_view(), name='book-upload'),
     path('worlds/generate/', WorldGenerateView.as_view(), name='world-generate'),
+    path(
+        'worlds/<int:world_id>/components/generate/',
+        WorldComponentGenerateView.as_view(),
+        name='world-component-generate',
+    ),
     path('characters/create/', CharacterCreateView.as_view(), name='character-create'),
     path('sessions/start/', SessionStartView.as_view(), name='session-start'),
     path('sessions/<int:session_id>/interact/', SessionInteractView.as_view(), name='session-interact'),

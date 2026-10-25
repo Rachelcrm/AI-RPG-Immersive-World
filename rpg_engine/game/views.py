@@ -11,11 +11,15 @@ from .serializers import (
     BookUploadSerializer,
     CharacterCreateSerializer,
     CharacterSerializer,
+    ComponentGenerateSerializer,
+    EncounterSerializer,
     InventoryItemSerializer,
+    LocationSerializer,
     MarketBootstrapSerializer,
     MarketItemSerializer,
     MerchantInventorySerializer,
     MerchantSerializer,
+    NPCSerializer,
     SessionInteractSerializer,
     SessionStartSerializer,
     StorySessionSerializer,
@@ -25,6 +29,7 @@ from .serializers import (
     WorldGenerateSerializer,
     WorldSerializer,
 )
+from .services.factories import ComponentFactoryRegistry
 from .services.mongo_service import MongoService
 from .services.openai_service import OpenAIService
 from .services.rule_layer import MarketRuleLayer
@@ -116,7 +121,81 @@ class WorldGenerateView(APIView):
             main_conflict=generated['main_conflict'],
         )
 
-        return Response({'world': WorldSerializer(world).data}, status=status.HTTP_201_CREATED)
+        # Locations come straight from the world spec (no extra AI call);
+        # NPCs need a second generation and are best-effort.
+        location_factory = ComponentFactoryRegistry.get('location')
+        locations = []
+        for name in generated['locations']:
+            try:
+                locations.append(location_factory.create(world=world, spec={'name': name}))
+            except ValueError:
+                continue
+
+        npcs, npc_error = [], None
+        try:
+            npcs = ComponentFactoryRegistry.get('npc').create_many(world=world, count=3)
+        except Exception as exc:
+            npc_error = str(exc)
+
+        return Response(
+            {
+                'world': WorldSerializer(world).data,
+                'locations': LocationSerializer(locations, many=True).data,
+                'npcs': NPCSerializer(npcs, many=True).data,
+                'npc_error': npc_error,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class WorldComponentGenerateView(APIView):
+    """Create game components on demand: AI-generated, or from a caller-supplied spec."""
+
+    _serializers = {
+        'location': LocationSerializer,
+        'npc': NPCSerializer,
+        'item': MarketItemSerializer,
+        'encounter': EncounterSerializer,
+    }
+
+    def post(self, request, world_id: int):
+        serializer = ComponentGenerateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        payload = serializer.validated_data
+
+        try:
+            world = World.objects.get(id=world_id)
+        except World.DoesNotExist:
+            return Response({'detail': f'World {world_id} not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        session = None
+        if payload.get('session_id'):
+            session = StorySession.objects.filter(id=payload['session_id'], world=world).first()
+            if session is None:
+                return Response({'detail': 'Session not found in this world.'}, status=status.HTTP_404_NOT_FOUND)
+        if payload['kind'] == 'encounter' and session is None:
+            return Response({'detail': 'session_id is required for encounters.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        factory = ComponentFactoryRegistry.get(payload['kind'])
+        try:
+            if payload.get('spec'):
+                components = [factory.create(world=world, spec=payload['spec'], session=session)]
+            else:
+                components = factory.create_many(
+                    world=world, count=payload['count'], session=session, hint=payload['hint']
+                )
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as exc:
+            return Response({'detail': f'Component generation failed: {exc}'}, status=status.HTTP_502_BAD_GATEWAY)
+
+        return Response(
+            {
+                'kind': payload['kind'],
+                'components': self._serializers[payload['kind']](components, many=True).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class CharacterCreateView(APIView):
