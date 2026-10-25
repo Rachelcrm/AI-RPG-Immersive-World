@@ -1,0 +1,39 @@
+# Local stack mirroring production: Postgres stands in for RDS, Mongo for Atlas.
+# In production point DATABASE_URL / MONGODB_URI at the managed services instead.
+services:
+  web:
+    build: .
+    ports:
+      - "8010:8000"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://rpg:rpg@db:5432/rpg
+      MONGODB_URI: mongodb://mongo:27017
+      DJANGO_ALLOWED_HOSTS: 127.0.0.1,localhost,0.0.0.0
+    depends_on:
+      db:
+        condition: service_healthy
+      mongo:
+        condition: service_started
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: rpg
+      POSTGRES_PASSWORD: rpg
+      POSTGRES_DB: rpg
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rpg"]
+      interval: 5s
+      retries: 10
+
+  mongo:
+    image: mongo:7
+    volumes:
+      - mongodata:/data/db
+
+volumes:
+  pgdata:
+  mongodata:

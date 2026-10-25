@@ -361,7 +361,7 @@ class TradeExecuteView(APIView):
         return Response(
             {
                 'order': TradeOrderSerializer(order).data,
-                'buyer_coins': buyer.coins,
+                'buyer_coins': str(buyer.coins),
                 'inventory': InventoryItemSerializer(inventory_items, many=True).data,
             },
             status=status.HTTP_201_CREATED,

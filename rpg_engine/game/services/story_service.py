@@ -41,7 +41,7 @@ class StoryService:
             'level': character.level,
             'hp': character.hp,
             'max_hp': character.max_hp,
-            'coins': character.coins,
+            'coins': str(character.coins),
             'location': character.current_location,
             'status_effects': list(character.status_effects),
             'inventory': [{'item_name': i.item_name, 'quantity': i.quantity} for i in inventory],

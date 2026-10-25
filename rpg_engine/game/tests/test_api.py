@@ -130,7 +130,7 @@ def test_trade_execute_endpoint(api, session, character):
         format='json',
     )
     assert resp.status_code == 201
-    assert resp.json()['buyer_coins'] == 89
+    assert resp.json()['buyer_coins'] == '89.50'
     assert resp.json()['inventory'][0]['item_name'] == 'Moon Shard'
 
 

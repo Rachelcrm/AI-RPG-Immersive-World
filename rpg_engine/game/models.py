@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.db import models
 
 
@@ -73,7 +75,7 @@ class Character(TimeStampedModel):
     name = models.CharField(max_length=120)
     role = models.CharField(max_length=80, blank=True)
     level = models.PositiveIntegerField(default=1)
-    coins = models.BigIntegerField(default=100)
+    coins = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('100.00'))
     hp = models.PositiveIntegerField(default=100)
     max_hp = models.PositiveIntegerField(default=100)
     current_location = models.CharField(max_length=120, blank=True)

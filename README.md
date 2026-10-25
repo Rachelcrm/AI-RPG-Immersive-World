@@ -71,7 +71,21 @@ Run tests:
 python -m pytest -q
 ```
 
-## 7) API Endpoints
+## 7) Deploy
+
+Local full stack (Postgres + Mongo + gunicorn):
+
+```bash
+cd rpg_engine && docker compose up --build
+```
+
+For AWS: build the image from `rpg_engine/Dockerfile`, run it on ECS/App Runner/EC2
+with `DATABASE_URL` pointing at RDS Postgres, `MONGODB_URI` at Atlas,
+`DJANGO_DEBUG=false`, a real `DJANGO_SECRET_KEY`, and `DJANGO_ALLOWED_HOSTS` /
+`DJANGO_CSRF_TRUSTED_ORIGINS` set to your domain. The container runs
+`migrate` on start.
+
+## 8) API Endpoints
 
 Upload a book:
 
@@ -134,7 +148,7 @@ a full `state` snapshot and `session_status`.
 If concurrent requests conflict, API returns `409` with `current_version`.
 Client should refresh latest session state and retry with the new `expected_version`.
 
-## 8) Economy / Trading MVP (Singleton + Strategy)
+## 9) Economy / Trading MVP (Singleton + Strategy)
 
 Quote with strategy:
 
@@ -157,7 +171,7 @@ Strategies:
 - `negotiation`
 - `barter`
 
-## 9) Rule Layer + AI Trading
+## 10) Rule Layer + AI Trading
 
 Bootstrap market from world/book:
 

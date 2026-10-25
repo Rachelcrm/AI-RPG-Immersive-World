@@ -180,10 +180,10 @@ class TradeService:
             quantity=quantity,
         )
 
-        if Decimal(character.coins) < quote.total_price:
+        if character.coins < quote.total_price:
             raise ValueError('Insufficient coins.')
 
-        character.coins = int(Decimal(character.coins) - quote.total_price)
+        character.coins = money(character.coins - quote.total_price)
         character.save(update_fields=['coins', 'updated_at'])
 
         inventory, _ = InventoryItem.objects.select_for_update().get_or_create(
@@ -255,10 +255,10 @@ class TradeService:
                 base_price=base_price,
                 quantity=quantity,
             )
-            if Decimal(character.coins) < quote.total_price:
+            if character.coins < quote.total_price:
                 raise ValueError('Insufficient coins.')
 
-            character.coins = int(Decimal(character.coins) - quote.total_price)
+            character.coins = money(character.coins - quote.total_price)
             character.save(update_fields=['coins', 'updated_at'])
 
             inventory_item, _ = InventoryItem.objects.select_for_update().get_or_create(
@@ -308,7 +308,7 @@ class TradeService:
         tax_amount = money(0)
         total_price = subtotal
 
-        character.coins = int(Decimal(character.coins) + total_price)
+        character.coins = money(character.coins + total_price)
         character.save(update_fields=['coins', 'updated_at'])
 
         inventory_item.quantity = inventory_item.quantity - quantity

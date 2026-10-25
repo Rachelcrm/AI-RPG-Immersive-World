@@ -7,3 +7,4 @@ psycopg[binary]>=3.2.0
 dj-database-url>=2.2.0
 pytest>=8.0
 pytest-django>=4.9
+gunicorn>=23.0

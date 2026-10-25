@@ -179,11 +179,11 @@ class CharacterObserver:
             c.current_location = p['to']
             ctx.notes.append(f'{c.name} moves to {p["to"]}.')
         elif event.type == 'gain_coins':
-            c.coins += p['amount']
+            c.coins = c.coins + p['amount']
             ctx.notes.append(f'+{p["amount"]} coins (now {c.coins}).')
         elif event.type == 'lose_coins':
-            lost = min(c.coins, p['amount'])
-            c.coins -= lost
+            lost = min(c.coins, Decimal(p['amount']))
+            c.coins = c.coins - lost
             ctx.notes.append(f'-{lost} coins (now {c.coins}).')
         elif event.type == 'add_status':
             if p['status'] not in c.status_effects:
@@ -253,7 +253,7 @@ class QuestObserver:
         if event.type == 'quest_complete':
             quest.status = Quest.STATUS_COMPLETED
             if quest.reward_coins:
-                ctx.character.coins += quest.reward_coins
+                ctx.character.coins = ctx.character.coins + quest.reward_coins
                 ctx.character.save(update_fields=['coins', 'updated_at'])
             ctx.notes.append(f'Quest complete: {quest.title} (+{quest.reward_coins} coins).')
         else:

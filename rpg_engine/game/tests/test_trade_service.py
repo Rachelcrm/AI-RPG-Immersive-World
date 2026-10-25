@@ -65,8 +65,7 @@ def test_execute_deducts_coins_and_adds_inventory(session, character):
     character.refresh_from_db()
     assert order.status == TradeOrder.STATUS_COMPLETED
     assert order.total_price == Decimal('26.25')
-    # coins are integer; the fractional part is truncated
-    assert character.coins == 73
+    assert character.coins == Decimal('73.75')
     inv = InventoryItem.objects.get(character=character, item_name='Moon Shard')
     assert inv.quantity == 2
     assert inv.avg_unit_price == Decimal('12.50')
@@ -83,7 +82,7 @@ def test_execute_rejects_insufficient_coins(session, character):
             strategy_name='fixed',
         )
     character.refresh_from_db()
-    assert character.coins == 100
+    assert character.coins == Decimal('100.00')
     assert not InventoryItem.objects.filter(character=character).exists()
 
 
@@ -101,7 +100,7 @@ def test_market_buy_then_sell_round_trip(session, character, merchant, market_it
     assert buy.side == TradeOrder.SIDE_BUY
     assert buy.item_name == 'Traveler Ration'
     assert buy.total_price == Decimal('21.00')
-    assert character.coins == 79
+    assert character.coins == Decimal('79.00')
     assert merchant.inventory.get(market_item=market_item).stock == 3
 
     sell = TradeService.execute_market_trade(
@@ -116,7 +115,7 @@ def test_market_buy_then_sell_round_trip(session, character, merchant, market_it
     character.refresh_from_db()
     assert sell.side == TradeOrder.SIDE_SELL
     assert sell.total_price == Decimal('12.00')  # 10.00 * 0.60 * 2
-    assert character.coins == 91
+    assert character.coins == Decimal('91.00')
     assert merchant.inventory.get(market_item=market_item).stock == 5
     assert not InventoryItem.objects.filter(character=character).exists()
 
@@ -132,3 +131,12 @@ def test_market_buy_rejects_out_of_stock(session, character, merchant, market_it
             action='buy',
             strategy_name='fixed',
         )
+
+
+def test_fractional_prices_are_not_truncated(session, character):
+    TradeService.execute(
+        session_id=session.id, character_id=character.id, item_name='Pin', quantity=1,
+        base_price=Decimal('0.33'), strategy_name='fixed',
+    )
+    character.refresh_from_db()
+    assert character.coins == Decimal('99.65')  # 100 - (0.33 + 0.02 tax)
