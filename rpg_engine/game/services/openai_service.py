@@ -63,7 +63,13 @@ class OpenAIService:
         character_role: str,
         user_input: str,
         history: list[dict] | None = None,
-    ) -> str:
+        state: dict | None = None,
+    ) -> dict:
+        """Return {'narrative': str, 'events': list[dict]}.
+
+        Events are raw model output; callers must pass them through
+        EventRuleLayer before applying them to game state.
+        """
         if not self._client:
             raise ValueError('OPENAI_API_KEY is not configured.')
 
@@ -71,16 +77,28 @@ class OpenAIService:
         history_text = '\n'.join(
             [f"Player: {item.get('user_input', '')}\nNarrator: {item.get('ai_output', '')}" for item in history]
         )
+        state_text = json.dumps(state or {}, ensure_ascii=False)
 
         prompt = (
-            'You are the narrative engine for a text RPG. '\
-            f'Continue the story in an immersive style and keep it concise (about 60-120 words). '\
-            f'Write in {settings.RPG_OUTPUT_LANGUAGE}. '\
-            "Return plain text only, no JSON.\n\n"
+            'You are the narrative engine for a text RPG. '
+            'Continue the story in an immersive style and keep it concise (about 60-120 words). '
+            f'Write the narrative in {settings.RPG_OUTPUT_LANGUAGE}. '
+            'Return strict JSON only with keys:\n'
+            '- narrative: string\n'
+            '- events: array of state changes caused by this turn. Allowed event objects:\n'
+            '  {"type":"damage","amount":int,"source":str} {"type":"heal","amount":int}\n'
+            '  {"type":"move","to":str} {"type":"gain_coins","amount":int} {"type":"lose_coins","amount":int}\n'
+            '  {"type":"gain_item","item_name":str,"quantity":int} {"type":"lose_item","item_name":str,"quantity":int}\n'
+            '  {"type":"add_status","status":str} {"type":"remove_status","status":str}\n'
+            '  {"type":"quest_start","title":str,"description":str,"reward_coins":int}\n'
+            '  {"type":"quest_complete","title":str} {"type":"quest_fail","title":str} {"type":"level_up"}\n'
+            'Only emit events that actually happen in the narrative. Use an empty array if nothing changes. '
+            'Only move to locations that exist in the world. Only complete quests that are active.\n\n'
             f'World: {world_name}\n'
             f'Lore: {world_lore_summary}\n'
             f'Character: {character_name}\n'
-            f'Role: {character_role or "Adventurer"}\n\n'
+            f'Role: {character_role or "Adventurer"}\n'
+            f'Current state: {state_text}\n\n'
             f'History:\n{history_text if history_text else "(none)"}\n\n'
             f'Current player action: {user_input}\n'
         )
@@ -88,12 +106,21 @@ class OpenAIService:
         response = self._client.responses.create(
             model=settings.OPENAI_MODEL,
             input=prompt,
-            max_output_tokens=220,
+            max_output_tokens=500,
         )
         text = (response.output_text or '').strip()
         if not text:
             raise ValueError('OpenAI returned empty story output.')
-        return text
+
+        try:
+            parsed = self._extract_json(text)
+        except ValueError:
+            # Model ignored the JSON instruction; keep the prose, apply no state changes.
+            return {'narrative': text, 'events': []}
+
+        narrative = str(parsed.get('narrative', '')).strip() or text
+        events = parsed.get('events')
+        return {'narrative': narrative, 'events': events if isinstance(events, list) else []}
 
     def generate_market_candidates(
         self,

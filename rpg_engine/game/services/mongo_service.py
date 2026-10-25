@@ -55,6 +55,17 @@ class MongoService:
             return {'ok': False, 'message': str(exc)}
 
     @classmethod
+    def insert_event_log(cls, *, session_id: int, character_id: int, event: dict) -> dict:
+        collection = cls._get_collection('game_events')
+        if collection is None:
+            return {'ok': False, 'message': 'MONGODB_URI is not configured.'}
+        try:
+            result = collection.insert_one({'session_id': session_id, 'character_id': character_id, **event})
+            return {'ok': True, 'id': str(result.inserted_id)}
+        except Exception as exc:
+            return {'ok': False, 'message': str(exc)}
+
+    @classmethod
     def get_conversation_history(cls, *, session_id: int, limit: int = 8) -> list[dict]:
         collection = cls._get_collection('conversation_logs')
         if collection is None:

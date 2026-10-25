@@ -59,9 +59,10 @@ def test_session_start_rejects_character_from_other_world(api, world, character,
 
 
 def test_session_interact_advances_version(api, session):
-    with patch('game.views.OpenAIService.generate_story_turn', return_value='You step into the hall.'), patch(
-        'game.views.MongoService.insert_conversation_log', return_value={'ok': True, 'id': 'x'}
-    ), patch('game.views.MongoService.get_conversation_history', return_value=[]):
+    ai_output = {'narrative': 'You step into the hall.', 'events': [{'type': 'move', 'to': 'Ruin Hall'}]}
+    with patch('game.services.story_service.OpenAIService.generate_story_turn', return_value=ai_output), patch(
+        'game.services.story_service.MongoService.insert_conversation_log', return_value={'ok': True, 'id': 'x'}
+    ), patch('game.services.story_service.MongoService.get_conversation_history', return_value=[]):
         resp = api.post(
             f'/api/sessions/{session.id}/interact/',
             {'user_input': 'I enter the ruin hall.', 'expected_version': 1},
@@ -71,6 +72,9 @@ def test_session_interact_advances_version(api, session):
     body = resp.json()
     assert body['ai_output'] == 'You step into the hall.'
     assert body['session_version'] == 2
+    assert body['events'] == [{'type': 'move', 'to': 'Ruin Hall'}]
+    assert body['state']['location'] == 'Ruin Hall'
+    assert body['notes'] == ['Kai moves to Ruin Hall.']
     session.refresh_from_db()
     assert session.is_processing is False
     assert session.last_turn_at is not None
@@ -85,8 +89,8 @@ def test_session_interact_stale_version_returns_409(api, session):
 
 
 def test_session_interact_releases_lock_on_ai_failure(api, session):
-    with patch('game.views.OpenAIService.generate_story_turn', side_effect=ValueError('boom')), patch(
-        'game.views.MongoService.get_conversation_history', return_value=[]
+    with patch('game.services.story_service.OpenAIService.generate_story_turn', side_effect=ValueError('boom')), patch(
+        'game.services.story_service.MongoService.get_conversation_history', return_value=[]
     ):
         resp = api.post(f'/api/sessions/{session.id}/interact/', {'user_input': 'look'}, format='json')
     assert resp.status_code == 502

@@ -37,9 +37,17 @@ class Character(TimeStampedModel):
     role = models.CharField(max_length=80, blank=True)
     level = models.PositiveIntegerField(default=1)
     coins = models.BigIntegerField(default=100)
+    hp = models.PositiveIntegerField(default=100)
+    max_hp = models.PositiveIntegerField(default=100)
+    current_location = models.CharField(max_length=120, blank=True)
+    status_effects = models.JSONField(default=list, blank=True)
 
     def __str__(self) -> str:
         return f'{self.name} (Lv.{self.level})'
+
+    @property
+    def is_alive(self) -> bool:
+        return self.hp > 0
 
 
 class StorySession(TimeStampedModel):
@@ -53,6 +61,30 @@ class StorySession(TimeStampedModel):
 
     def __str__(self) -> str:
         return self.title
+
+
+class Quest(TimeStampedModel):
+    STATUS_ACTIVE = 'active'
+    STATUS_COMPLETED = 'completed'
+    STATUS_FAILED = 'failed'
+    STATUS_CHOICES = [
+        (STATUS_ACTIVE, 'Active'),
+        (STATUS_COMPLETED, 'Completed'),
+        (STATUS_FAILED, 'Failed'),
+    ]
+
+    session = models.ForeignKey(StorySession, on_delete=models.CASCADE, related_name='quests')
+    character = models.ForeignKey(Character, on_delete=models.CASCADE, related_name='quests')
+    title = models.CharField(max_length=160)
+    description = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_ACTIVE)
+    reward_coins = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        unique_together = ('session', 'title')
+
+    def __str__(self) -> str:
+        return f'{self.title} [{self.status}]'
 
 
 class InventoryItem(TimeStampedModel):

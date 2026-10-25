@@ -28,6 +28,7 @@ from .serializers import (
 from .services.mongo_service import MongoService
 from .services.openai_service import OpenAIService
 from .services.rule_layer import MarketRuleLayer
+from .services.story_service import StoryService
 from .services.trade_service import TradeService
 
 
@@ -198,27 +199,12 @@ class SessionInteractView(APIView):
 
         session.refresh_from_db()
 
-        history = MongoService.get_conversation_history(session_id=session.id, limit=8)
         try:
-            ai_output = OpenAIService().generate_story_turn(
-                world_name=session.world.name,
-                world_lore_summary=session.world.lore_summary,
-                character_name=session.character.name,
-                character_role=session.character.role,
-                user_input=user_input,
-                history=history,
-            )
+            result = StoryService().play_turn(session=session, user_input=user_input)
         except Exception as exc:
             StorySession.objects.filter(id=session.id).update(is_processing=False)
             return Response({'detail': f'Interaction failed: {str(exc)}'}, status=status.HTTP_502_BAD_GATEWAY)
 
-        log_result = MongoService.insert_conversation_log(
-            session_id=session.id,
-            world_id=session.world_id,
-            character_id=session.character_id,
-            user_input=user_input,
-            ai_output=ai_output,
-        )
         StorySession.objects.filter(id=session.id).update(
             is_processing=False,
             version=F('version') + 1,
@@ -231,8 +217,11 @@ class SessionInteractView(APIView):
                 'session_id': session.id,
                 'session_version': session.version,
                 'user_input': user_input,
-                'ai_output': ai_output,
-                'history_saved': log_result.get('ok', False),
+                'ai_output': result.narrative,
+                'events': [e.to_dict() for e in result.events],
+                'notes': result.notes,
+                'state': result.state,
+                'history_saved': result.history_saved,
             },
             status=status.HTTP_200_OK,
         )

@@ -2,7 +2,18 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
-from .models import Book, Character, InventoryItem, MarketItem, Merchant, MerchantInventory, StorySession, TradeOrder, World
+from .models import (
+    Book,
+    Character,
+    InventoryItem,
+    MarketItem,
+    Merchant,
+    MerchantInventory,
+    Quest,
+    StorySession,
+    TradeOrder,
+    World,
+)
 
 
 class BookUploadSerializer(serializers.ModelSerializer):
@@ -43,7 +54,25 @@ class CharacterCreateSerializer(serializers.ModelSerializer):
 class CharacterSerializer(serializers.ModelSerializer):
     class Meta:
         model = Character
-        fields = ['id', 'world', 'name', 'role', 'level', 'coins', 'created_at']
+        fields = [
+            'id',
+            'world',
+            'name',
+            'role',
+            'level',
+            'coins',
+            'hp',
+            'max_hp',
+            'current_location',
+            'status_effects',
+            'created_at',
+        ]
+
+
+class QuestSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Quest
+        fields = ['id', 'title', 'description', 'status', 'reward_coins']
 
 
 class SessionStartSerializer(serializers.Serializer):
