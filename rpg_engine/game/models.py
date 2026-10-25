@@ -88,10 +88,13 @@ class Character(TimeStampedModel):
 
 
 class StorySession(TimeStampedModel):
+    STATUS_ACTIVE = 'active'
+    STATUS_ENDED = 'ended'
+
     world = models.ForeignKey(World, on_delete=models.CASCADE, related_name='sessions')
     character = models.ForeignKey(Character, on_delete=models.CASCADE, related_name='sessions')
     title = models.CharField(max_length=255)
-    status = models.CharField(max_length=30, default='active')
+    status = models.CharField(max_length=30, default=STATUS_ACTIVE)
     version = models.PositiveIntegerField(default=1)
     is_processing = models.BooleanField(default=False)
     last_turn_at = models.DateTimeField(null=True, blank=True)

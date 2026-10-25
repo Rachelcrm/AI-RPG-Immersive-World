@@ -90,7 +90,43 @@ class TradeStrategyFactory:
         return strategy_cls()
 
 
+def rule_based_trade_intent(user_input: str, allowed_items: list[str]) -> dict:
+    """Keyword parser used when the AI parser is unavailable or fails."""
+    text = user_input.lower()
+    action = 'sell' if any(k in text for k in ['sell', '出售', '卖']) else 'buy'
+    strategy = 'fixed'
+    if any(k in text for k in ['negot', 'bargain', '讲价', '讨价']):
+        strategy = 'negotiation'
+    elif any(k in text for k in ['barter', '交换', '以物易物']):
+        strategy = 'barter'
+
+    quantity = 1
+    for token in text.replace(',', ' ').split():
+        if token.isdigit():
+            quantity = max(1, int(token))
+            break
+
+    chosen = allowed_items[0]
+    for item in allowed_items:
+        if item.lower() in text:
+            chosen = item
+            break
+
+    return {'action': action, 'item_name': chosen, 'quantity': quantity, 'strategy': strategy}
+
+
 class TradeService:
+    @staticmethod
+    def parse_intent(*, user_input: str, allowed_items: list[str], ai=None) -> tuple[dict, str]:
+        """Return (intent, source) where source is 'ai' or 'rule_fallback'."""
+        from game.services.openai_service import OpenAIService
+
+        try:
+            intent = (ai or OpenAIService()).parse_trade_intent(user_input=user_input, allowed_items=allowed_items)
+            return intent, 'ai'
+        except Exception:
+            return rule_based_trade_intent(user_input, allowed_items), 'rule_fallback'
+
     @staticmethod
     def resolve_market_item_name(*, world_id: int, requested_name: str) -> str:
         normalized = requested_name.strip().lower()

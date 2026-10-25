@@ -17,6 +17,7 @@ class TurnResult:
     notes: list[str]
     state: dict
     history_saved: bool
+    session_status: str = 'active'
 
 
 class StoryService:
@@ -72,6 +73,10 @@ class StoryService:
         ctx = TurnContext(session=session, character=character, user_input=user_input, narrative=narrative)
         with transaction.atomic():
             applied = self._bus.publish(events, ctx)
+            if not character.is_alive:
+                session.status = StorySession.STATUS_ENDED
+                session.save(update_fields=['status', 'updated_at'])
+                ctx.notes.append('The story ends here.')
 
         log_result = MongoService.insert_conversation_log(
             session_id=session.id,
@@ -88,4 +93,5 @@ class StoryService:
             notes=ctx.notes,
             state=self.state_snapshot(character, session),
             history_saved=log_result.get('ok', False),
+            session_status=session.status,
         )

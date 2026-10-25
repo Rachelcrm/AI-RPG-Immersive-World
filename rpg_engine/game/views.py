@@ -37,30 +37,6 @@ from .services.story_service import StoryService
 from .services.trade_service import TradeService
 
 
-def _fallback_trade_intent(user_input: str, allowed_items: list[str]) -> dict:
-    text = user_input.lower()
-    action = 'sell' if any(k in text for k in ['sell', '出售', '卖']) else 'buy'
-    strategy = 'fixed'
-    if any(k in text for k in ['negot', 'bargain', '讲价', '讨价']):
-        strategy = 'negotiation'
-    elif any(k in text for k in ['barter', '交换', '以物易物']):
-        strategy = 'barter'
-
-    quantity = 1
-    for token in text.replace(',', ' ').split():
-        if token.isdigit():
-            quantity = max(1, int(token))
-            break
-
-    chosen = allowed_items[0]
-    for item in allowed_items:
-        if item.lower() in text:
-            chosen = item
-            break
-
-    return {'action': action, 'item_name': chosen, 'quantity': quantity, 'strategy': strategy}
-
-
 class HealthView(APIView):
     def get(self, request):
         db_ok = True
@@ -234,6 +210,22 @@ class SessionStartView(APIView):
         return Response({'session': StorySessionSerializer(session).data}, status=status.HTTP_201_CREATED)
 
 
+class SessionStateView(APIView):
+    def get(self, request, session_id: int):
+        try:
+            session = StorySession.objects.select_related('world', 'character').get(id=session_id)
+        except StorySession.DoesNotExist:
+            return Response({'detail': f'Session {session_id} not found.'}, status=status.HTTP_404_NOT_FOUND)
+        return Response(
+            {
+                'session': StorySessionSerializer(session).data,
+                'state': StoryService.state_snapshot(session.character, session),
+                'history': MongoService.get_conversation_history(session_id=session.id, limit=20),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 class SessionInteractView(APIView):
     def post(self, request, session_id: int):
         serializer = SessionInteractSerializer(data=request.data)
@@ -300,6 +292,7 @@ class SessionInteractView(APIView):
                 'events': [e.to_dict() for e in result.events],
                 'notes': result.notes,
                 'state': result.state,
+                'session_status': result.session_status,
                 'history_saved': result.history_saved,
             },
             status=status.HTTP_200_OK,
@@ -489,15 +482,9 @@ class AITradeView(APIView):
         if not available_items:
             return Response({'detail': 'No market items found. Run /api/market/bootstrap/ first.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        try:
-            intent = OpenAIService().parse_trade_intent(
-                user_input=payload['user_input'],
-                allowed_items=available_items,
-            )
-            intent_source = 'ai'
-        except Exception:
-            intent = _fallback_trade_intent(payload['user_input'], available_items)
-            intent_source = 'rule_fallback'
+        intent, intent_source = TradeService.parse_intent(
+            user_input=payload['user_input'], allowed_items=available_items
+        )
 
         try:
             order = TradeService.execute_market_trade(

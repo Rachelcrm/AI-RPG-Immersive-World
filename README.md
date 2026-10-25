@@ -39,7 +39,39 @@ It checks:
 
 If `OPENAI_API_KEY` or `MONGODB_URI` is missing, health returns `degraded` with details.
 
-## 5) MVP Endpoints (Step 2)
+## 5) Play in the terminal (no frontend needed)
+
+```bash
+python manage.py play --book path/to/book.txt --name Kai --role Ranger
+```
+
+Add `--offline` (automatic when `OPENAI_API_KEY` is unset) to use a deterministic
+narrator that understands `look`, `go to <place>`, `rest`, `talk`, `fight`,
+`finish`. Slash commands: `/status /inventory /quests /market /buy … /sell … /quit`.
+Resume later with `--session <id>`.
+
+## 6) Architecture
+
+| Pattern | Where | Role |
+|---|---|---|
+| Factory Method | `game/services/factories.py` | `GameComponentFactory.create()` runs spec → validate → build; `LocationFactory`, `NPCFactory`, `ItemFactory`, `EncounterFactory` fill the hooks; `ComponentFactoryRegistry` resolves by kind |
+| Observer | `game/services/events.py` | `GameStateBus` publishes sanitized `GameEvent`s to `CharacterObserver`, `InventoryObserver`, `QuestObserver`, `SpawnObserver`, `MongoEventObserver` |
+| Singleton | `game/services/trade_service.py` | `CurrencyManager` holds the global currency and tax rate |
+| Strategy | `game/services/trade_service.py` | `FixedPriceStrategy`, `NegotiationStrategy`, `BarterStrategy` via `TradeStrategyFactory` |
+
+One game turn (`StoryService.play_turn`): load history from MongoDB → ask the
+narrator for `{narrative, events}` → `EventRuleLayer` whitelists and clamps
+events → bus applies them inside a transaction (a `spawn` event calls a
+factory) → log to MongoDB → return a state snapshot. Lethal damage ends the
+session.
+
+Run tests:
+
+```bash
+python -m pytest -q
+```
+
+## 7) API Endpoints
 
 Upload a book:
 
@@ -73,6 +105,21 @@ curl -X POST http://127.0.0.1:8010/api/sessions/start/ \
   -d '{"world_id":1,"character_id":1,"title":"Demo Adventure"}'
 ```
 
+Read session state (character, inventory, quests, nearby NPCs, history):
+
+```bash
+curl http://127.0.0.1:8010/api/sessions/1/
+```
+
+Generate components on demand (`kind`: location | npc | item | encounter; pass
+`spec` to skip the AI):
+
+```bash
+curl -X POST http://127.0.0.1:8010/api/worlds/1/components/generate/ \
+  -H "Content-Type: application/json" \
+  -d '{"kind":"npc","count":2,"hint":"someone who runs the market"}'
+```
+
 Interact with session:
 
 ```bash
@@ -81,10 +128,13 @@ curl -X POST http://127.0.0.1:8010/api/sessions/1/interact/ \
   -d '{"user_input":"I enter the ruin hall and inspect the walls.","expected_version":1}'
 ```
 
+The response carries `ai_output`, the applied `events`, human-readable `notes`,
+a full `state` snapshot and `session_status`.
+
 If concurrent requests conflict, API returns `409` with `current_version`.
 Client should refresh latest session state and retry with the new `expected_version`.
 
-## 6) Economy / Trading MVP (Singleton + Strategy)
+## 8) Economy / Trading MVP (Singleton + Strategy)
 
 Quote with strategy:
 
@@ -107,7 +157,7 @@ Strategies:
 - `negotiation`
 - `barter`
 
-## 7) Rule Layer + AI Trading
+## 9) Rule Layer + AI Trading
 
 Bootstrap market from world/book:
 
