@@ -2,22 +2,21 @@
 
     python manage.py play --book path/to/book.txt --name Kai --role Ranger
     python manage.py play --session 3
-    python manage.py play --book demo.txt --offline   # no OpenAI key needed
+    python manage.py play --book demo.txt --offline   # no API key needed
+    python manage.py play --book demo.txt --provider anthropic
 """
 from __future__ import annotations
 
 from pathlib import Path
 
-from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
-from game.models import Book, Character, MarketItem, Merchant, MerchantInventory, StorySession, World
-from game.services.factories import ComponentFactoryRegistry
+from game.models import Character, MarketItem, Merchant, StorySession, World
 from game.services.offline_narrator import OfflineNarrator
-from game.services.openai_service import OpenAIService
-from game.services.rule_layer import MarketRuleLayer
+from game.services.llm_service import get_llm_service
 from game.services.story_service import StoryService
 from game.services.trade_service import TradeService
+from game.services.world_builder import build_world_from_file
 
 HELP = """
 Commands (anything else is sent to the narrator as your action):
@@ -41,14 +40,18 @@ class Command(BaseCommand):
         parser.add_argument('--name', default='Kai')
         parser.add_argument('--role', default='Ranger')
         parser.add_argument('--offline', action='store_true', help='Use the deterministic offline narrator.')
+        parser.add_argument('--provider', choices=['anthropic', 'openai'], help='Override LLM_PROVIDER.')
 
     # --- setup --------------------------------------------------------------
 
     def handle(self, *args, **opts):
-        offline = opts['offline'] or not settings.OPENAI_API_KEY
-        if offline and not opts['offline']:
-            self.stdout.write(self.style.WARNING('OPENAI_API_KEY not set; using offline narrator.'))
-        self.ai = OfflineNarrator() if offline else OpenAIService()
+        llm = None if opts['offline'] else get_llm_service(opts.get('provider'))
+        if llm is not None and not llm.is_configured():
+            self.stdout.write(self.style.WARNING(f'{llm.key_setting} not set; using offline narrator.'))
+            llm = None
+        if llm is not None:
+            self.stdout.write(f'Narrator: {llm.provider} / {llm.model}')
+        self.ai = llm or OfflineNarrator()
         self.story = StoryService(ai=self.ai)
 
         session = self._resolve_session(opts)
@@ -86,62 +89,10 @@ class Command(BaseCommand):
     def _build_world(self, path: Path) -> World:
         if not path.is_file():
             raise CommandError(f'Book not found: {path}')
-        content = path.read_text(encoding='utf-8', errors='ignore')
-        book = Book.objects.create(title=path.stem, content=content)
-        self.stdout.write(f'Generating world from "{book.title}"…')
-        spec = self.ai.generate_world(book_title=book.title, book_content=book.content)
-        world = World.objects.create(
-            book=book,
-            name=spec['world_name'],
-            source_book_title=book.title,
-            lore_summary=spec['lore_summary'],
-            factions=spec['factions'],
-            locations=spec['locations'],
-            main_conflict=spec['main_conflict'],
+        self.stdout.write(f'Preparing "{path.stem}": splitting chapters, summarising, then building the world…')
+        return build_world_from_file(
+            path, self.ai, info=self.stdout.write, warn=lambda msg: self.stdout.write(self.style.WARNING(msg))
         )
-        loc_factory = ComponentFactoryRegistry.get('location', ai=self.ai)
-        for name in spec['locations']:
-            loc_factory.create(world=world, spec={'name': name})
-        try:
-            npcs = ComponentFactoryRegistry.get('npc', ai=self.ai).create_many(world=world, count=3)
-            self.stdout.write(f'NPCs: {", ".join(n.name for n in npcs)}')
-        except Exception as exc:
-            self.stdout.write(self.style.WARNING(f'NPC generation skipped: {exc}'))
-        self._bootstrap_market(world, book)
-        return world
-
-    def _bootstrap_market(self, world: World, book: Book) -> None:
-        try:
-            data = self.ai.generate_market_candidates(
-                world_name=world.name, world_lore_summary=world.lore_summary, book_title=book.title, book_content=book.content
-            )
-        except Exception as exc:
-            self.stdout.write(self.style.WARNING(f'Market generation skipped: {exc}'))
-            return
-        items = MarketRuleLayer.sanitize_items(data.get('items', []))
-        merchants = MarketRuleLayer.sanitize_merchants(data.get('merchants', []))
-        item_objs = []
-        for item in items:
-            obj, _ = MarketItem.objects.update_or_create(
-                world=world,
-                name=item['name'],
-                defaults={'category': item['category'], 'rarity': item['rarity'], 'base_price': item['base_price']},
-            )
-            item_objs.append((obj, item['stock']))
-        first_location = (world.locations or [''])[0]
-        for m in merchants:
-            merchant, _ = Merchant.objects.update_or_create(
-                world=world,
-                name=m['name'],
-                defaults={
-                    'location': m['location'] or first_location,
-                    'price_multiplier': m['price_multiplier'],
-                    'buyback_rate': m['buyback_rate'],
-                },
-            )
-            for obj, stock in item_objs:
-                MerchantInventory.objects.update_or_create(merchant=merchant, market_item=obj, defaults={'stock': stock})
-        self.stdout.write(f'Market: {len(item_objs)} items, {len(merchants)} merchant(s)')
 
     # --- loop ---------------------------------------------------------------
 

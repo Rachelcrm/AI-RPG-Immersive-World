@@ -22,8 +22,8 @@ from .models import (
 class BookUploadSerializer(serializers.ModelSerializer):
     class Meta:
         model = Book
-        fields = ['id', 'title', 'content', 'source_type', 'created_at']
-        read_only_fields = ['id', 'created_at']
+        fields = ['id', 'title', 'content', 'source_type', 'chapter_count', 'created_at']
+        read_only_fields = ['id', 'chapter_count', 'created_at']
 
 
 class WorldGenerateSerializer(serializers.Serializer):
@@ -113,7 +113,24 @@ class SessionStartSerializer(serializers.Serializer):
 class StorySessionSerializer(serializers.ModelSerializer):
     class Meta:
         model = StorySession
-        fields = ['id', 'world', 'character', 'title', 'status', 'version', 'is_processing', 'last_turn_at', 'created_at']
+        fields = ['id', 'world', 'character', 'title', 'status', 'version', 'is_processing', 'last_turn_at', 'current_chapter', 'objective', 'created_at']
+
+
+class PlayStartSerializer(serializers.Serializer):
+    book = serializers.CharField(max_length=255)
+    name = serializers.CharField(max_length=120, default='Kai')
+    role = serializers.CharField(max_length=80, required=False, allow_blank=True, default='Adventurer')
+    # 1-based chapter the adventure starts from; clamped to the book's last chapter.
+    start_chapter = serializers.IntegerField(min_value=1, required=False)
+
+
+class PlayPrepareSerializer(serializers.Serializer):
+    book = serializers.CharField(max_length=255)
+    batch = serializers.IntegerField(min_value=1, max_value=20, required=False)
+
+
+class BookProcessSerializer(serializers.Serializer):
+    batch = serializers.IntegerField(min_value=1, max_value=20, required=False)
 
 
 class SessionInteractSerializer(serializers.Serializer):

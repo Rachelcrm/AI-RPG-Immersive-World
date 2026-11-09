@@ -15,9 +15,17 @@ class Book(TimeStampedModel):
     title = models.CharField(max_length=255)
     content = models.TextField()
     source_type = models.CharField(max_length=30, default='txt')
+    # Number of chapters split into MongoDB's `chapters` collection; 0 = not split yet.
+    chapter_count = models.PositiveIntegerField(default=0)
 
     def __str__(self) -> str:
         return self.title
+
+    @property
+    def store_key(self) -> str:
+        """Key of this book's data in MongoDB. Built from source and title, not the row id, so the
+        same scan is found from every database (local SQLite and Cloud SQL number rows differently)."""
+        return f'{self.source_type}:{self.title}'
 
 
 class World(TimeStampedModel):
@@ -100,6 +108,10 @@ class StorySession(TimeStampedModel):
     version = models.PositiveIntegerField(default=1)
     is_processing = models.BooleanField(default=False)
     last_turn_at = models.DateTimeField(null=True, blank=True)
+    # Which chapter of the source book the story is currently following (1-based).
+    current_chapter = models.PositiveIntegerField(default=1)
+    # One line shown under the input box: what the player is currently trying to do (no outcomes).
+    objective = models.CharField(max_length=120, blank=True)
 
     def __str__(self) -> str:
         return self.title

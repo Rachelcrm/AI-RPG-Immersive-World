@@ -13,6 +13,7 @@ from typing import Protocol
 
 from game.models import Character, InventoryItem, Quest, StorySession
 from game.services.mongo_service import MongoService
+from django.conf import settings
 
 # Event types the rule layer accepts. Anything else from the model is dropped.
 EVENT_TYPES = {
@@ -30,6 +31,7 @@ EVENT_TYPES = {
     'quest_fail',
     'level_up',
     'spawn',
+    'next_chapter',
 }
 SPAWNABLE_KINDS = {'npc', 'encounter', 'location'}
 
@@ -38,6 +40,57 @@ MAX_HEAL_PER_TURN = 60
 MAX_COINS_PER_TURN = 500
 MAX_ITEM_QTY_PER_TURN = 10
 
+
+
+# Player-facing turn notes, in the configured output language (English templates are the fallback).
+NOTE_TEMPLATES = {
+    'en': {
+        'damage': '{name} takes {amount} damage (HP {hp}/{max_hp}).',
+        'fallen': '{name} has fallen.',
+        'heal': '{name} recovers {amount} HP (HP {hp}/{max_hp}).',
+        'move': '{name} moves to {to}.',
+        'gain_coins': '+{amount} coins (now {coins}).',
+        'lose_coins': '-{amount} coins (now {coins}).',
+        'add_status': '{name} is now {status}.',
+        'remove_status': '{name} is no longer {status}.',
+        'level_up': '{name} reaches level {level}!',
+        'gain_item': 'Obtained {name} x{qty}.',
+        'lose_item': 'Lost {name} x{qty}.',
+        'quest_start': 'New quest: {title}.',
+        'quest_complete': 'Quest complete: {title} (+{coins} coins).',
+        'quest_fail': 'Quest failed: {title}.',
+        'spawn': 'New {kind}: {label}.',
+        'next_chapter': 'The story moves on to chapter {chapter}.',
+        'story_end': 'The story ends here.',
+    },
+    'zh': {
+        'damage': '{name} 受到 {amount} 点伤害（HP {hp}/{max_hp}）。',
+        'fallen': '{name} 倒下了。',
+        'heal': '{name} 恢复 {amount} 点生命（HP {hp}/{max_hp}）。',
+        'move': '{name} 来到了 {to}。',
+        'gain_coins': '金币 +{amount}（现有 {coins}）。',
+        'lose_coins': '金币 -{amount}（现有 {coins}）。',
+        'add_status': '{name} 进入状态：{status}。',
+        'remove_status': '{name} 解除状态：{status}。',
+        'level_up': '{name} 升到了 {level} 级！',
+        'gain_item': '获得 {name} ×{qty}。',
+        'lose_item': '失去 {name} ×{qty}。',
+        'quest_start': '新任务：{title}。',
+        'quest_complete': '任务完成：{title}（金币 +{coins}）。',
+        'quest_fail': '任务失败：{title}。',
+        'spawn': '新登场{kind}：{label}。',
+        'next_chapter': '故事进入第 {chapter} 章。',
+        'story_end': '故事到此为止。',
+    },
+}
+_KIND_ZH = {'npc': '人物', 'encounter': '遭遇', 'location': '地点', 'item': '物品'}
+
+
+def note(key: str, **kw) -> str:
+    lang = 'zh' if str(settings.RPG_OUTPUT_LANGUAGE).lower().startswith(('chinese', 'zh', '中文')) else 'en'
+    if lang == 'zh' and 'kind' in kw:
+        kw['kind'] = _KIND_ZH.get(kw['kind'], kw['kind'])
+    return NOTE_TEMPLATES[lang][key].format(**kw)
 
 @dataclass
 class GameEvent:
@@ -119,7 +172,7 @@ class EventRuleLayer:
                             },
                         )
                     )
-            elif kind == 'level_up':
+            elif kind in {'level_up', 'next_chapter'}:
                 events.append(GameEvent(kind, {}))
             elif kind == 'spawn':
                 spawn_kind = str(raw.get('kind', '')).strip().lower()
@@ -169,35 +222,35 @@ class CharacterObserver:
         p = event.payload
         if event.type == 'damage':
             c.hp = max(0, c.hp - p['amount'])
-            ctx.notes.append(f'{c.name} takes {p["amount"]} damage (HP {c.hp}/{c.max_hp}).')
+            ctx.notes.append(note('damage', name=c.name, amount=p['amount'], hp=c.hp, max_hp=c.max_hp))
             if c.hp == 0:
-                ctx.notes.append(f'{c.name} has fallen.')
+                ctx.notes.append(note('fallen', name=c.name))
         elif event.type == 'heal':
             c.hp = min(c.max_hp, c.hp + p['amount'])
-            ctx.notes.append(f'{c.name} recovers {p["amount"]} HP (HP {c.hp}/{c.max_hp}).')
+            ctx.notes.append(note('heal', name=c.name, amount=p['amount'], hp=c.hp, max_hp=c.max_hp))
         elif event.type == 'move':
             c.current_location = p['to']
-            ctx.notes.append(f'{c.name} moves to {p["to"]}.')
+            ctx.notes.append(note('move', name=c.name, to=p['to']))
         elif event.type == 'gain_coins':
             c.coins = c.coins + p['amount']
-            ctx.notes.append(f'+{p["amount"]} coins (now {c.coins}).')
+            ctx.notes.append(note('gain_coins', amount=p['amount'], coins=c.coins))
         elif event.type == 'lose_coins':
             lost = min(c.coins, Decimal(p['amount']))
             c.coins = c.coins - lost
-            ctx.notes.append(f'-{lost} coins (now {c.coins}).')
+            ctx.notes.append(note('lose_coins', amount=lost, coins=c.coins))
         elif event.type == 'add_status':
             if p['status'] not in c.status_effects:
                 c.status_effects = [*c.status_effects, p['status']]
-                ctx.notes.append(f'{c.name} is now {p["status"]}.')
+                ctx.notes.append(note('add_status', name=c.name, status=p['status']))
         elif event.type == 'remove_status':
             if p['status'] in c.status_effects:
                 c.status_effects = [s for s in c.status_effects if s != p['status']]
-                ctx.notes.append(f'{c.name} is no longer {p["status"]}.')
+                ctx.notes.append(note('remove_status', name=c.name, status=p['status']))
         elif event.type == 'level_up':
             c.level += 1
             c.max_hp += 10
             c.hp = c.max_hp
-            ctx.notes.append(f'{c.name} reaches level {c.level}!')
+            ctx.notes.append(note('level_up', name=c.name, level=c.level))
         c.save(update_fields=['hp', 'max_hp', 'current_location', 'coins', 'status_effects', 'level', 'updated_at'])
 
 
@@ -213,7 +266,7 @@ class InventoryObserver:
         if event.type == 'gain_item':
             item.quantity += qty
             item.save(update_fields=['quantity', 'updated_at'])
-            ctx.notes.append(f'Obtained {name} x{qty}.')
+            ctx.notes.append(note('gain_item', name=name, qty=qty))
         else:
             removed = min(item.quantity, qty)
             item.quantity -= removed
@@ -222,7 +275,7 @@ class InventoryObserver:
             else:
                 item.save(update_fields=['quantity', 'updated_at'])
             if removed:
-                ctx.notes.append(f'Lost {name} x{removed}.')
+                ctx.notes.append(note('lose_item', name=name, qty=removed))
 
 
 class QuestObserver:
@@ -244,7 +297,7 @@ class QuestObserver:
                 },
             )
             if created:
-                ctx.notes.append(f'New quest: {p["title"]}.')
+                ctx.notes.append(note('quest_start', title=p['title']))
             return
 
         quest = Quest.objects.filter(session=ctx.session, title=p['title'], status=Quest.STATUS_ACTIVE).first()
@@ -255,10 +308,10 @@ class QuestObserver:
             if quest.reward_coins:
                 ctx.character.coins = ctx.character.coins + quest.reward_coins
                 ctx.character.save(update_fields=['coins', 'updated_at'])
-            ctx.notes.append(f'Quest complete: {quest.title} (+{quest.reward_coins} coins).')
+            ctx.notes.append(note('quest_complete', title=quest.title, coins=quest.reward_coins))
         else:
             quest.status = Quest.STATUS_FAILED
-            ctx.notes.append(f'Quest failed: {quest.title}.')
+            ctx.notes.append(note('quest_fail', title=quest.title))
         quest.save(update_fields=['status', 'updated_at'])
 
 
@@ -279,7 +332,24 @@ class SpawnObserver:
             return  # invalid spec: skip silently, narrative already happened
         label = getattr(component, 'title', None) or getattr(component, 'name', '')
         event.payload['id'] = component.id
-        ctx.notes.append(f'New {kind}: {label}.')
+        ctx.notes.append(note('spawn', kind=kind, label=label))
+
+
+class ChapterObserver:
+    """Advances the session through the source book's chapters."""
+
+    def handles(self) -> set[str]:
+        return {'next_chapter'}
+
+    def on_event(self, event: GameEvent, ctx: TurnContext) -> None:
+        session = ctx.session
+        book = session.world.book
+        last = book.chapter_count if book is not None and book.chapter_count else None
+        if last is not None and session.current_chapter >= last:
+            return
+        session.current_chapter += 1
+        session.save(update_fields=['current_chapter', 'updated_at'])
+        ctx.notes.append(note('next_chapter', chapter=session.current_chapter))
 
 
 class MongoEventObserver:
@@ -303,5 +373,6 @@ def build_default_bus() -> GameStateBus:
         .subscribe(InventoryObserver())
         .subscribe(QuestObserver())
         .subscribe(SpawnObserver())
+        .subscribe(ChapterObserver())
         .subscribe(MongoEventObserver())
     )

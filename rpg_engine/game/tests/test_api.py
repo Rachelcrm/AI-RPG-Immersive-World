@@ -7,7 +7,9 @@ from game.models import Book, Character, StorySession, World
 pytestmark = pytest.mark.django_db
 
 
-def test_health_reports_degraded_without_external_keys(api):
+def test_health_reports_degraded_without_external_keys(api, settings):
+    settings.ANTHROPIC_API_KEY = ''
+    settings.OPENAI_API_KEY = ''
     resp = api.get('/api/health/')
     assert resp.status_code == 200
     assert resp.json()['database']['ok'] is True
@@ -28,7 +30,7 @@ def test_world_generate_uses_openai_output(api, book):
         'locations': ['B'],
         'main_conflict': 'C',
     }
-    with patch('game.views.OpenAIService.generate_world', return_value=fake):
+    with patch('game.services.llm_service.LLMService.generate_world', return_value=fake):
         resp = api.post('/api/worlds/generate/', {'book_id': book.id}, format='json')
     assert resp.status_code == 201
     world = World.objects.get(id=resp.json()['world']['id'])
@@ -37,7 +39,7 @@ def test_world_generate_uses_openai_output(api, book):
 
 
 def test_world_generate_returns_502_when_openai_fails(api, book):
-    with patch('game.views.OpenAIService.generate_world', side_effect=ValueError('no key')):
+    with patch('game.services.llm_service.LLMService.generate_world', side_effect=ValueError('no key')):
         resp = api.post('/api/worlds/generate/', {'book_id': book.id}, format='json')
     assert resp.status_code == 502
 
@@ -60,7 +62,7 @@ def test_session_start_rejects_character_from_other_world(api, world, character,
 
 def test_session_interact_advances_version(api, session):
     ai_output = {'narrative': 'You step into the hall.', 'events': [{'type': 'move', 'to': 'Ruin Hall'}]}
-    with patch('game.services.story_service.OpenAIService.generate_story_turn', return_value=ai_output), patch(
+    with patch('game.services.llm_service.LLMService.generate_story_turn', return_value=ai_output), patch(
         'game.services.story_service.MongoService.insert_conversation_log', return_value={'ok': True, 'id': 'x'}
     ), patch('game.services.story_service.MongoService.get_conversation_history', return_value=[]):
         resp = api.post(
@@ -89,7 +91,7 @@ def test_session_interact_stale_version_returns_409(api, session):
 
 
 def test_session_interact_releases_lock_on_ai_failure(api, session):
-    with patch('game.services.story_service.OpenAIService.generate_story_turn', side_effect=ValueError('boom')), patch(
+    with patch('game.services.llm_service.LLMService.generate_story_turn', side_effect=ValueError('boom')), patch(
         'game.services.story_service.MongoService.get_conversation_history', return_value=[]
     ):
         resp = api.post(f'/api/sessions/{session.id}/interact/', {'user_input': 'look'}, format='json')
@@ -135,7 +137,7 @@ def test_trade_execute_endpoint(api, session, character):
 
 
 def test_ai_trade_falls_back_to_rule_parser(api, session, merchant, market_item):
-    with patch('game.views.OpenAIService.parse_trade_intent', side_effect=ValueError('no key')):
+    with patch('game.services.llm_service.LLMService.parse_trade_intent', side_effect=ValueError('no key')):
         resp = api.post(
             '/api/trades/ai-act/',
             {'session_id': session.id, 'merchant_id': merchant.id, 'user_input': 'buy 2 traveler ration with negotiation'},

@@ -1,4 +1,4 @@
-"""Deterministic stand-in for OpenAIService when no API key is configured.
+"""Deterministic stand-in for the LLM services when no API key is configured.
 
 It implements the same generate_* methods the game loop calls, so the
 full turn pipeline (events -> observers -> snapshot) runs unchanged.
@@ -8,6 +8,9 @@ from __future__ import annotations
 
 import random
 import re
+
+from game.services.bible import evidence_signature, normalize_profile
+from game.services.llm_service import LLMService
 
 
 class OfflineNarrator:
@@ -19,7 +22,7 @@ class OfflineNarrator:
     def check(self) -> dict:
         return {'ok': True, 'message': 'offline narrator'}
 
-    def generate_world(self, *, book_title: str, book_content: str) -> dict:
+    def generate_world(self, *, book_title: str, book_content: str, chapter_summaries: list[dict] | None = None) -> dict:
         # Capitalized multi-word phrases make serviceable place names.
         phrases = re.findall(r'\b(?:[A-Z][a-z]+ ){1,2}[A-Z][a-z]+\b', book_content)
         seen: list[str] = []
@@ -34,6 +37,44 @@ class OfflineNarrator:
             'locations': locations,
             'main_conflict': 'Unknown forces stir in the land.',
         }
+
+    def summarize_chapter(self, *, chapter_index: int, chapter_title: str, text: str, **_) -> dict:
+        phrases = re.findall(r'\b(?:[A-Z][a-z]+ ){1,2}[A-Z][a-z]+\b', text)
+        names: list[str] = []
+        for phrase in phrases:
+            if phrase not in names:
+                names.append(phrase)
+        spoken = re.findall(r'[“"]([^”"]{3,60})[”"]', text)
+        raw = {
+            'summary': ' '.join(text.split())[:300],
+            'characters': [
+                {
+                    'name': n,
+                    'identity': 'figure',
+                    'importance': 'major' if i == 0 else 'minor',
+                    'status': 'present',
+                    'quotes': spoken[:2] if i == 0 else [],
+                    'reactions': [{'situation': 'asked a question', 'action': 'answers briefly'}] if i == 0 else [],
+                    'relations': [{'target': names[1], 'relation': 'companion'}] if i == 0 and len(names) > 1 else [],
+                }
+                for i, n in enumerate(names[:3])
+            ],
+            'locations': names[3:6],
+            'items': [],
+            'events': [{'description': f'Chapter {chapter_index} ({chapter_title}) unfolds.', 'type': 'other', 'participants': names[:1]}],
+            'facts': [{'content': f'Chapter {chapter_index} has a title: {chapter_title}.', 'category': 'world'}] if chapter_title else [],
+            'hooks': ['Find out what happens next.'],
+        }
+        return LLMService.shape_chapter_summary(raw, chapter_index=chapter_index)
+
+    def profile_character(self, *, book_title: str, character: dict) -> dict:
+        raw = {
+            'personality': f"{character['name']} is steady and watchful.",
+            'speech_style': 'Speaks briefly and plainly.',
+            'style_tags': ['terse', 'calm'],
+            'behaviour': ['keeps own counsel until asked twice'],
+        }
+        return normalize_profile(raw, signature=evidence_signature(character))
 
     def generate_components(self, *, kind: str, count: int, known_locations: list[str], **_) -> list[dict]:
         names = ['Garr', 'Mira', 'Old Pell', 'Sable', 'Tomas', 'Wren']
@@ -67,7 +108,7 @@ class OfflineNarrator:
     def parse_trade_intent(self, **_) -> dict:
         raise ValueError('offline narrator has no intent parser; use rule fallback')
 
-    def generate_story_turn(self, *, user_input: str, state: dict | None = None, **_) -> dict:
+    def generate_story_turn(self, *, user_input: str, state: dict | None = None, objective: str = '', **_) -> dict:
         """Tiny command grammar so the demo loop produces real state changes."""
         state = state or {}
         text = user_input.strip().lower()
@@ -114,4 +155,4 @@ class OfflineNarrator:
         else:
             narrative = f'You {user_input.strip()}. Nothing much comes of it.'
 
-        return {'narrative': narrative, 'events': events}
+        return {'narrative': narrative, 'events': events, 'objective': objective}

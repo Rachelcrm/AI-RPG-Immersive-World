@@ -11,7 +11,7 @@ from abc import ABC, abstractmethod
 from decimal import Decimal
 
 from game.models import Encounter, Location, MarketItem, NPC, StorySession, World
-from game.services.openai_service import OpenAIService
+from game.services.llm_service import LLMService, get_llm_service
 from game.services.rule_layer import MarketRuleLayer
 
 
@@ -31,7 +31,7 @@ class GameComponentFactory(ABC):
     kind: str = ''
     max_batch = 10
 
-    def __init__(self, *, ai: OpenAIService | None = None) -> None:
+    def __init__(self, *, ai: LLMService | None = None) -> None:
         self._ai = ai
 
     # --- template method -------------------------------------------------
@@ -57,7 +57,7 @@ class GameComponentFactory(ABC):
         return created
 
     def generate_specs(self, *, world: World, count: int, hint: str) -> list[dict]:
-        ai = self._ai or OpenAIService()
+        ai = self._ai or get_llm_service()
         return ai.generate_components(
             kind=self.kind,
             schema=self.schema_hint(),
@@ -199,7 +199,7 @@ class ComponentFactoryRegistry:
         return sorted(cls._factories)
 
     @classmethod
-    def get(cls, kind: str, *, ai: OpenAIService | None = None) -> GameComponentFactory:
+    def get(cls, kind: str, *, ai: LLMService | None = None) -> GameComponentFactory:
         factory_cls = cls._factories.get(kind)
         if factory_cls is None:
             raise ValueError(f'Unknown component kind: {kind}')

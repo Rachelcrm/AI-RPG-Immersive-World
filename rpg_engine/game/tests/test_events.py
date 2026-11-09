@@ -172,7 +172,7 @@ def test_story_service_turn_applies_events_and_snapshots(session, character):
             {'type': 'bogus'},
         ],
     }
-    with patch('game.services.story_service.OpenAIService.generate_story_turn', return_value=ai_output) as gen, patch(
+    with patch('game.services.llm_service.LLMService.generate_story_turn', return_value=ai_output) as gen, patch(
         'game.services.story_service.MongoService.insert_conversation_log', return_value={'ok': True}
     ), patch('game.services.story_service.MongoService.get_conversation_history', return_value=[]), patch(
         'game.services.events.MongoService.insert_event_log', return_value={'ok': True}
@@ -212,14 +212,24 @@ def _turn(svc):
 
 def test_generate_story_turn_parses_json_envelope():
     out = _turn(_fake_ai('```json\n{"narrative": "Hi.", "events": [{"type": "heal", "amount": 5}]}\n```'))
-    assert out == {'narrative': 'Hi.', 'events': [{'type': 'heal', 'amount': 5}]}
+    assert out == {'narrative': 'Hi.', 'events': [{'type': 'heal', 'amount': 5}], 'objective': ''}
 
 
 def test_generate_story_turn_falls_back_to_plain_text():
     out = _turn(_fake_ai('The wind howls through the ruins.'))
-    assert out == {'narrative': 'The wind howls through the ruins.', 'events': []}
+    assert out == {'narrative': 'The wind howls through the ruins.', 'events': [], 'objective': ''}
 
 
 def test_generate_story_turn_tolerates_bad_events_field():
     out = _turn(_fake_ai('{"narrative": "Hi.", "events": "none"}'))
     assert out['events'] == []
+
+
+def test_generate_story_turn_takes_models_corrected_object():
+    text = (
+        '{"narrative": "First try.", "events": [], "spawn": []}\n\n'
+        'Wait, that output is malformed. Corrected output follows:\n\n'
+        '{"narrative": "Second try.", "events": [{"type": "gain_item", "item_name": "Lamp", "quantity": 1}]}'
+    )
+    out = _turn(_fake_ai(text))
+    assert out == {'narrative': 'Second try.', 'events': [{'type': 'gain_item', 'item_name': 'Lamp', 'quantity': 1}], 'objective': ''}

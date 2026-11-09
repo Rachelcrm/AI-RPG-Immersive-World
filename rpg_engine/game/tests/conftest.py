@@ -4,6 +4,22 @@ import pytest
 from rest_framework.test import APIClient
 
 from game.models import Book, Character, MarketItem, Merchant, MerchantInventory, StorySession, World
+from game.services.mongo_service import MongoService
+
+
+@pytest.fixture(autouse=True)
+def clear_memory_mongo(settings):
+    # Tests never touch a real MongoDB (a developer's .env may point at one): force the in-memory
+    # store, which is keyed by ids that the rolled-back test database reuses, so clear it per test.
+    settings.MONGODB_URI = ''
+    settings.RPG_OUTPUT_LANGUAGE = 'English'  # turn notes and prompts are asserted in English
+    MongoService._memory_history.clear()
+    MongoService._memory_chapters.clear()
+    MongoService._memory_bible.clear()
+    yield
+    MongoService._memory_history.clear()
+    MongoService._memory_chapters.clear()
+    MongoService._memory_bible.clear()
 
 
 @pytest.fixture

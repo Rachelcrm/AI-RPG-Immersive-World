@@ -119,10 +119,10 @@ class TradeService:
     @staticmethod
     def parse_intent(*, user_input: str, allowed_items: list[str], ai=None) -> tuple[dict, str]:
         """Return (intent, source) where source is 'ai' or 'rule_fallback'."""
-        from game.services.openai_service import OpenAIService
+        from game.services.llm_service import get_llm_service
 
         try:
-            intent = (ai or OpenAIService()).parse_trade_intent(user_input=user_input, allowed_items=allowed_items)
+            intent = (ai or get_llm_service()).parse_trade_intent(user_input=user_input, allowed_items=allowed_items)
             return intent, 'ai'
         except Exception:
             return rule_based_trade_intent(user_input, allowed_items), 'rule_fallback'

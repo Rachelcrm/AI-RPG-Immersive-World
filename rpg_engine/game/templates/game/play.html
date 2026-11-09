@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI 文字冒险</title>
+<style>
+  :root {
+    --bg: #f6f3ec; --panel: #fffdf8; --ink: #2a2520; --muted: #7a7168;
+    --line: #e3dccf; --accent: #8a4b2a; --player: #eef0ff; --narrator: #fff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #17150f; --panel: #221f18; --ink: #ece6da; --muted: #9b9388;
+            --line: #3a3529; --accent: #d59a6c; --player: #2a2d45; --narrator: #2a2720; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 16px/1.6 Georgia, "Songti SC", "Noto Serif CJK SC", serif; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 24px 16px 120px; }
+  header { border-bottom: 1px solid var(--line); padding-bottom: 12px; margin-bottom: 20px; }
+  header h1 { margin: 0; font-size: 22px; font-weight: 600; }
+  header .sub { color: var(--muted); font-size: 14px; margin-top: 4px; }
+  header .sub b { color: var(--ink); font-weight: 600; }
+  #setup { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px; }
+  #setup label { display: block; font-size: 14px; color: var(--muted); margin: 12px 0 4px; }
+  #setup select, #setup input { width: 100%; padding: 8px 10px; font: inherit; font-size: 15px;
+         border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); }
+  .row { display: flex; gap: 12px; }
+  .row > div { flex: 1; }
+  button { font: inherit; font-size: 15px; padding: 8px 18px; border-radius: 6px; cursor: pointer;
+           border: 1px solid var(--accent); background: var(--accent); color: #fff; }
+  button:disabled { opacity: .5; cursor: default; }
+  button.ghost { background: transparent; color: var(--accent); }
+  #log { display: flex; flex-direction: column; gap: 14px; }
+  .msg { padding: 12px 16px; border-radius: 10px; border: 1px solid var(--line); white-space: pre-wrap; }
+  .msg.player { background: var(--player); align-self: flex-end; max-width: 85%; }
+  .msg.narrator { background: var(--narrator); }
+  .msg.system { background: transparent; border-style: dashed; color: var(--muted); font-size: 14px; }
+  .msg .who { font-size: 12px; color: var(--muted); margin-bottom: 4px; letter-spacing: .04em; }
+  .notes { margin: 8px 0 0; padding-left: 18px; font-size: 14px; color: var(--muted); }
+  #composer { position: fixed; left: 0; right: 0; bottom: 0; background: var(--bg);
+              border-top: 1px solid var(--line); padding: 12px 16px; }
+  #composer form { max-width: 760px; margin: 0 auto; display: flex; gap: 10px; }
+  #composer textarea { flex: 1; resize: none; height: 48px; padding: 10px 12px; font: inherit; font-size: 15px;
+              border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); }
+  .status { font-size: 13px; color: var(--muted); max-width: 760px; margin: 6px auto 0; }
+  #chapters { margin-top: 14px; }
+  #chapters h2 { font-size: 15px; font-weight: 600; margin: 0 0 8px; }
+  .chapter { display: block; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px;
+             cursor: pointer; background: var(--bg); }
+  .chapter:has(input:checked) { border-color: var(--accent); background: var(--narrator); }
+  .chapter input { margin-right: 8px; }
+  .chapter .t { font-weight: 600; }
+  .chapter .s { margin: 6px 0 0 24px; font-size: 14px; color: var(--muted); display: none; }
+  .chapter:has(input:checked) .s { display: block; color: var(--ink); }
+  .chapter .meta { margin: 4px 0 0 24px; font-size: 13px; color: var(--muted); display: none; }
+  .chapter:has(input:checked) .meta { display: block; }
+  .actions { display: flex; gap: 10px; margin-top: 14px; }
+  .hidden { display: none !important; }
+  .err { color: #b3261e; }
+  .objective { font-size: 13px; color: var(--accent); margin-top: 6px; min-height: 1em; }
+  .objective:empty { display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1 id="book-title">AI 文字冒险</h1>
+    <div class="sub" id="world-line">从一本书开始你的冒险</div>
+  </header>
+
+  <section id="setup">
+    <div id="step-book">
+      <label for="book">选择一本书</label>
+      <select id="book"></select>
+      <div class="row">
+        <div><label for="name">角色名</label><input id="name" value="Kai"></div>
+        <div><label for="role">职业</label><input id="role" value="游侠"></div>
+      </div>
+    </div>
+    <p id="setup-msg" style="font-size:14px;color:var(--muted)"></p>
+    <button id="prepare">读取章节</button>
+    <div id="chapters" class="hidden">
+      <h2>从哪一章开始？</h2>
+      <div id="chapter-list"></div>
+      <div class="actions">
+        <button id="start">从这一章开始冒险</button>
+        <button id="back" type="button" class="ghost">换一本书</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="game" class="hidden">
+    <div id="log"></div>
+  </section>
+</div>
+
+<div id="composer" class="hidden">
+  <form id="form">
+    <textarea id="input" placeholder="你要做什么？（Enter 发送，Shift+Enter 换行）" maxlength="2000"></textarea>
+    <button id="send" type="submit">发送</button>
+    <button id="new" type="button" class="ghost" title="换一本书 / 重新开始">新游戏</button>
+  </form>
+  <div class="objective" id="objective"></div>
+  <div class="status" id="status"></div>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const STORAGE = 'ai-rpg-session';
+
+  function csrf() {
+    const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+    return m ? m[1] : '';
+  }
+  async function api(path, body) {
+    const res = await fetch(path, {
+      method: body ? 'POST' : 'GET',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || `${res.status} ${res.statusText}`);
+    return data;
+  }
+
+  function addMsg(kind, text, notes) {
+    const el = document.createElement('div');
+    el.className = `msg ${kind}`;
+    const who = { player: '你', narrator: '旁白', system: '' }[kind];
+    if (who) { const w = document.createElement('div'); w.className = 'who'; w.textContent = who; el.appendChild(w); }
+    el.appendChild(document.createTextNode(text));
+    if (notes && notes.length) {
+      const ul = document.createElement('ul'); ul.className = 'notes';
+      for (const n of notes) { const li = document.createElement('li'); li.textContent = n; ul.appendChild(li); }
+      el.appendChild(ul);
+    }
+    $('log').appendChild(el);
+    el.scrollIntoView({ block: 'end', behavior: 'smooth' });
+    return el;
+  }
+
+  function renderObjective(text) {
+    $('objective').textContent = text ? `当前：${text}` : '';
+  }
+
+  function renderStatus(s) {
+    if (!s) return;
+    const chapter = s.chapter_count ? ` · 第 ${s.chapter}/${s.chapter_count} 章` : '';
+    $('status').textContent =
+      `${s.name} · Lv${s.level} · HP ${s.hp}/${s.max_hp} · ${s.coins} 金币 · ${s.location || '未知地点'}${chapter}`;
+  }
+
+  let session = null;
+
+  function enterGame(bookTitle, worldName, lore) {
+    $('book-title').textContent = bookTitle;
+    $('world-line').innerHTML = '';
+    const b = document.createElement('b'); b.textContent = worldName;
+    $('world-line').append(b, lore ? ` — ${lore}` : '');
+    $('setup').classList.add('hidden');
+    $('game').classList.remove('hidden');
+    $('composer').classList.remove('hidden');
+    $('input').focus();
+  }
+
+  async function loadBooks() {
+    const { books } = await api('/api/books/local/');
+    const sel = $('book');
+    sel.innerHTML = '';
+    for (const b of books) {
+      const o = document.createElement('option'); o.value = b.file; o.textContent = b.title; sel.appendChild(o);
+    }
+    if (!books.length) {
+      $('setup-msg').textContent = '没有找到书。把 .txt 文件放进 samples/ 文件夹（或设置 BOOKS_DIR）后刷新。';
+      $('prepare').disabled = true;
+    }
+  }
+
+  async function prepare(book) {
+    // The server summarises a few chapters per call; keep calling until the world is ready.
+    for (;;) {
+      const p = await api('/api/play/prepare/', { book });
+      if (p.ready) return p;
+      const failed = p.failed ? `, ${p.failed} failed` : '';
+      $('setup-msg').textContent = p.pending
+        ? `正在读书… 已整理 ${p.done + p.failed}/${p.total} 章${failed}。`
+        : p.profiles_pending
+          ? `章节整理完毕，正在整理人物志… 还剩 ${p.profiles_pending} 位主要人物。`
+          : '人物志完成，正在生成世界、人物和市场…';
+    }
+  }
+
+  function renderChapters(chapters) {
+    const list = $('chapter-list');
+    list.innerHTML = '';
+    for (const c of chapters) {
+      const label = document.createElement('label'); label.className = 'chapter';
+      const input = document.createElement('input');
+      input.type = 'radio'; input.name = 'chapter'; input.value = c.index; input.checked = c.index === chapters[0].index;
+      const t = document.createElement('span'); t.className = 't'; t.textContent = `第 ${c.index} 章 · ${c.title}`;
+      const sum = document.createElement('div'); sum.className = 's'; sum.textContent = c.summary || '（这一章还没有摘要）';
+      label.append(input, t, sum);
+      const meta = [];
+      if (c.locations && c.locations.length) meta.push(`地点：${c.locations.join('、')}`);
+      if (c.characters && c.characters.length) meta.push(`人物：${c.characters.join('、')}`);
+      if (meta.length) { const m = document.createElement('div'); m.className = 'meta'; m.textContent = meta.join('　'); label.appendChild(m); }
+      list.appendChild(label);
+    }
+  }
+
+  function selectedChapter() {
+    const el = document.querySelector('input[name="chapter"]:checked');
+    return el ? Number(el.value) : 1;
+  }
+
+  async function prepareAndListChapters() {
+    $('prepare').disabled = true;
+    $('setup-msg').className = '';
+    $('setup-msg').textContent = '正在准备这本书… 第一次读一本长篇需要几分钟。';
+    try {
+      await prepare($('book').value);
+      const data = await api(`/api/play/chapters/?book=${encodeURIComponent($('book').value)}`);
+      if (!data.chapters.length) throw new Error('这本书还没有章节摘要。');
+      renderChapters(data.chapters);
+      const failed = data.failed ? `，${data.failed} 章整理失败` : '';
+      $('setup-msg').textContent = `《${data.book_title}》共 ${data.chapter_count} 章${failed}。选一章开始。`;
+      $('step-book').classList.add('hidden');
+      $('prepare').classList.add('hidden');
+      $('chapters').classList.remove('hidden');
+    } catch (e) {
+      $('setup-msg').className = 'err';
+      $('setup-msg').textContent = `准备失败：${e.message}`;
+    } finally {
+      $('prepare').disabled = false;
+    }
+  }
+
+  function backToBooks() {
+    $('chapters').classList.add('hidden');
+    $('prepare').classList.remove('hidden');
+    $('step-book').classList.remove('hidden');
+    $('setup-msg').textContent = '';
+  }
+
+  async function start() {
+    $('start').disabled = true;
+    $('setup-msg').className = '';
+    $('setup-msg').textContent = '正在开始冒险…';
+    try {
+      const data = await api('/api/play/start/', {
+        book: $('book').value, name: $('name').value.trim() || 'Kai', role: $('role').value.trim(),
+        start_chapter: selectedChapter(),
+      });
+      session = { id: data.session.id, book: data.book_title, world: data.world.name, lore: data.world.lore_summary };
+      localStorage.setItem(STORAGE, JSON.stringify(session));
+      enterGame(session.book, session.world, session.lore);
+      const s = data.state;
+      if (data.chapter) {
+        addMsg('system', `故事从第 ${data.chapter.index} 章「${data.chapter.title}」开始。\n前情提要：${data.chapter.summary}`);
+      }
+      addMsg('system', `${s.name} 的冒险开始了。你现在在 ${s.location || '未知地点'}。`);
+      renderStatus(s);
+      renderObjective(data.session.objective);
+    } catch (e) {
+      $('setup-msg').className = 'err';
+      $('setup-msg').textContent = `开始失败：${e.message}`;
+    } finally {
+      $('start').disabled = false;
+    }
+  }
+
+  async function resume(saved) {
+    try {
+      const data = await api(`/api/sessions/${saved.id}/`);
+      if (data.session.status !== 'active') throw new Error('session ended');
+      session = saved;
+      enterGame(saved.book, saved.world, saved.lore);
+      for (const h of data.history) { addMsg('player', h.user_input); addMsg('narrator', h.ai_output); }
+      if (!data.history.length) addMsg('system', '继续你的冒险。');
+      renderStatus(data.state);
+      renderObjective(data.session.objective);
+    } catch {
+      localStorage.removeItem(STORAGE);
+    }
+  }
+
+  async function send(e) {
+    e.preventDefault();
+    const text = $('input').value.trim();
+    if (!text || !session) return;
+    $('input').value = '';
+    $('send').disabled = true;
+    addMsg('player', text);
+    const pending = addMsg('system', '旁白正在思考…');
+    try {
+      const data = await api(`/api/sessions/${session.id}/interact/`, { user_input: text });
+      pending.remove();
+      addMsg('narrator', data.ai_output, data.notes);
+      renderStatus(data.state);
+      renderObjective(data.objective);
+      if (data.session_status && data.session_status !== 'active') addMsg('system', '这段冒险已经结束。');
+    } catch (err) {
+      pending.remove();
+      addMsg('system', `出错了：${err.message}`);
+    } finally {
+      $('send').disabled = false;
+      $('input').focus();
+    }
+  }
+
+  $('form').addEventListener('submit', send);
+  $('input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('form').requestSubmit(); }
+  });
+  $('prepare').addEventListener('click', prepareAndListChapters);
+  $('back').addEventListener('click', backToBooks);
+  $('start').addEventListener('click', start);
+  $('new').addEventListener('click', () => { localStorage.removeItem(STORAGE); location.reload(); });
+
+  loadBooks().catch((e) => { $('setup-msg').className = 'err'; $('setup-msg').textContent = e.message; });
+  const saved = localStorage.getItem(STORAGE);
+  if (saved) resume(JSON.parse(saved));
+})();
+</script>
+</body>
+</html>

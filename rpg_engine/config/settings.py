@@ -93,9 +93,20 @@ REST_FRAMEWORK = {
     ]
 }
 
+# LLM provider: 'anthropic' or 'openai'. Empty = anthropic if ANTHROPIC_API_KEY is set, else openai.
+LLM_PROVIDER = os.getenv('LLM_PROVIDER', '')
+ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY', '')
+ANTHROPIC_MODEL = os.getenv('ANTHROPIC_MODEL', 'claude-sonnet-5-5')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
 OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4.1-mini')
 RPG_OUTPUT_LANGUAGE = os.getenv('RPG_OUTPUT_LANGUAGE', 'English')
 TRADE_TAX_RATE = os.getenv('TRADE_TAX_RATE', '0.05')
 MONGODB_URI = os.getenv('MONGODB_URI', '')
 MONGODB_DB_NAME = os.getenv('MONGODB_DB_NAME', 'rpg_game')
+# Short chapters (web novels) are grouped into units of about this many characters before
+# summarisation, so a 1200-chapter book yields a few hundred summaries instead of 1200. 0 = off.
+CHAPTER_GROUP_CHARS = int(os.getenv('CHAPTER_GROUP_CHARS', '12000'))
+# Prose rules the narrator follows every turn; edit the file to change the writing style, no restart needed.
+NARRATOR_STYLE_FILE = os.getenv('NARRATOR_STYLE_FILE', str(BASE_DIR / 'prompts' / 'narrator_style.md'))
+# Folder of .txt books the web UI can start a game from.
+BOOKS_DIR = Path(os.getenv('BOOKS_DIR') or BASE_DIR / 'samples')

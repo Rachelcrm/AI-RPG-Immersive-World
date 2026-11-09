@@ -1,6 +1,9 @@
 from django.db import connection
 from django.db.models import F
 from django.utils import timezone
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import ensure_csrf_cookie
+from django.views.generic import TemplateView
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -8,6 +11,7 @@ from rest_framework.views import APIView
 from .models import Book, Character, InventoryItem, MarketItem, Merchant, MerchantInventory, StorySession, World
 from .serializers import (
     AITradeSerializer,
+    BookProcessSerializer,
     BookUploadSerializer,
     CharacterCreateSerializer,
     CharacterSerializer,
@@ -20,6 +24,8 @@ from .serializers import (
     MerchantInventorySerializer,
     MerchantSerializer,
     NPCSerializer,
+    PlayPrepareSerializer,
+    PlayStartSerializer,
     SessionInteractSerializer,
     SessionStartSerializer,
     StorySessionSerializer,
@@ -31,10 +37,24 @@ from .serializers import (
 )
 from .services.factories import ComponentFactoryRegistry
 from .services.mongo_service import MongoService
-from .services.openai_service import OpenAIService
+from .services.llm_service import get_llm_service
 from .services.rule_layer import MarketRuleLayer
 from .services.story_service import StoryService
 from .services.trade_service import TradeService
+from .services.world_builder import (
+    DEFAULT_BATCH,
+    book_for_local_file,
+    build_world_from_book,
+    build_world_from_file,
+    chapter_list,
+    ensure_bible,
+    ingest_book,
+    list_local_books,
+    opening_objective,
+    process_chapters,
+    resolve_local_book,
+    starting_location,
+)
 
 
 class HealthView(APIView):
@@ -49,15 +69,15 @@ class HealthView(APIView):
             db_ok = False
             db_message = str(exc)
 
-        openai_result = OpenAIService().check()
+        llm_result = get_llm_service().check()
         mongo_result = MongoService.ping()
 
-        healthy = db_ok and openai_result['ok'] and mongo_result['ok']
+        healthy = db_ok and llm_result['ok'] and mongo_result['ok']
         return Response(
             {
                 'status': 'healthy' if healthy else 'degraded',
                 'database': {'ok': db_ok, 'message': db_message},
-                'openai': openai_result,
+                'llm': llm_result,
                 'mongodb': mongo_result,
             }
         )
@@ -83,7 +103,10 @@ class WorldGenerateView(APIView):
             return Response({'detail': f'Book {book_id} not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         try:
-            generated = OpenAIService().generate_world(book_title=book.title, book_content=book.content)
+            summaries = MongoService.get_chapter_summaries(book_id=book.store_key)
+            generated = get_llm_service().generate_world(
+                book_title=book.title, book_content=book.content, chapter_summaries=summaries
+            )
         except Exception as exc:
             return Response({'detail': f'World generation failed: {str(exc)}'}, status=status.HTTP_502_BAD_GATEWAY)
 
@@ -180,6 +203,173 @@ class CharacterCreateView(APIView):
         serializer.is_valid(raise_exception=True)
         character = serializer.save()
         return Response({'character': CharacterSerializer(character).data}, status=status.HTTP_201_CREATED)
+
+
+@method_decorator(ensure_csrf_cookie, name='dispatch')
+class PlayPageView(TemplateView):
+    template_name = 'game/play.html'
+
+
+class LocalBookListView(APIView):
+    def get(self, request):
+        return Response({'books': list_local_books()}, status=status.HTTP_200_OK)
+
+
+def _progress_payload(book: Book, progress: dict, world: World | None) -> dict:
+    return {
+        'book_id': book.id,
+        'book_title': book.title,
+        'chapter_count': book.chapter_count,
+        **progress,
+        'profiles_pending': progress.get('profiles_pending', 0),
+        'ready': world is not None,
+        'world_id': world.id if world else None,
+    }
+
+
+def _advance_book(book: Book, batch: int) -> tuple[dict, World | None, str | None]:
+    """One step of the pipeline: split, or summarise a batch, or build the world. Returns (progress, world, error).
+
+    Each call does a bounded amount of work so it fits in one short HTTP request; the client
+    keeps calling until `ready`. Steps already done are skipped, so retries are safe.
+    """
+    world = World.objects.filter(book=book).order_by('-id').first()
+    progress = ingest_book(book)
+    if progress['pending']:
+        # Also runs for an existing world whose summaries were lost (in-memory store, restart):
+        # the chapter picker and the narrator need them back.
+        progress = process_chapters(book, get_llm_service(), batch=batch)
+        if progress['pending']:
+            return progress, None, None
+    # Hard facts (characters, plot, rules) are merged from the summaries without model calls; the
+    # overall profile of each major character is one model call, a few per request.
+    remaining = ensure_bible(book, get_llm_service(), batch=batch)
+    if remaining:
+        return {**progress, 'profiles_pending': remaining}, None, None
+    if world is not None:
+        return progress, world, None
+    try:
+        world = build_world_from_book(book, get_llm_service())
+    except Exception as exc:
+        return progress, None, f'World generation failed: {exc}'
+    return progress, world, None
+
+
+class BookProcessView(APIView):
+    """Advance an uploaded book through the chapter pipeline, one batch per call."""
+
+    def post(self, request, book_id: int):
+        serializer = BookProcessSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            book = Book.objects.get(id=book_id)
+        except Book.DoesNotExist:
+            return Response({'detail': f'Book {book_id} not found.'}, status=status.HTTP_404_NOT_FOUND)
+        progress, world, error = _advance_book(book, serializer.validated_data.get('batch') or DEFAULT_BATCH)
+        if error:
+            return Response({'detail': error, **_progress_payload(book, progress, None)}, status=status.HTTP_502_BAD_GATEWAY)
+        return Response(_progress_payload(book, progress, world), status=status.HTTP_200_OK)
+
+    def get(self, request, book_id: int):
+        try:
+            book = Book.objects.get(id=book_id)
+        except Book.DoesNotExist:
+            return Response({'detail': f'Book {book_id} not found.'}, status=status.HTTP_404_NOT_FOUND)
+        world = World.objects.filter(book=book).order_by('-id').first()
+        return Response(_progress_payload(book, MongoService.chapter_progress(book_id=book.store_key), world))
+
+
+class PlayPrepareView(APIView):
+    """Same as BookProcessView, for a book in the local samples folder. The web UI polls this before /play/start/."""
+
+    def post(self, request):
+        serializer = PlayPrepareSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        path = resolve_local_book(data['book'])
+        if path is None:
+            return Response({'detail': f"Book {data['book']!r} not found."}, status=status.HTTP_404_NOT_FOUND)
+        book = book_for_local_file(path)
+        # Worlds built before books were tracked per file are keyed by title only.
+        legacy_world = World.objects.filter(book__isnull=True, source_book_title=path.stem).order_by('-id').first()
+        if legacy_world is not None and not World.objects.filter(book=book).exists():
+            legacy_world.book = book
+            legacy_world.save(update_fields=['book', 'updated_at'])
+        progress, world, error = _advance_book(book, data.get('batch') or DEFAULT_BATCH)
+        if error:
+            return Response({'detail': error, **_progress_payload(book, progress, None)}, status=status.HTTP_502_BAD_GATEWAY)
+        return Response(_progress_payload(book, progress, world), status=status.HTTP_200_OK)
+
+
+class PlayChaptersView(APIView):
+    """Chapter titles and digests of a prepared local book, for picking where the adventure starts."""
+
+    def get(self, request):
+        file_name = request.query_params.get('book', '')
+        path = resolve_local_book(file_name)
+        if path is None:
+            return Response({'detail': f'Book {file_name!r} not found.'}, status=status.HTTP_404_NOT_FOUND)
+        book = book_for_local_file(path)
+        return Response(
+            {
+                'book_id': book.id,
+                'book_title': book.title,
+                'chapter_count': book.chapter_count,
+                **MongoService.chapter_progress(book_id=book.store_key),
+                'chapters': chapter_list(book),
+            }
+        )
+
+
+class PlayStartView(APIView):
+    """One call for the web UI: pick a local book, get a session back.
+
+    The world is generated once per book file and reused afterwards, so
+    starting a new game is instant after the first run.
+    """
+
+    def post(self, request):
+        serializer = PlayStartSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        path = resolve_local_book(data['book'])
+        if path is None:
+            return Response({'detail': f"Book {data['book']!r} not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        world = World.objects.filter(source_book_title=path.stem).order_by('-id').first()
+        if world is None:
+            try:
+                world = build_world_from_file(path, get_llm_service())
+            except Exception as exc:
+                return Response({'detail': f'World generation failed: {exc}'}, status=status.HTTP_502_BAD_GATEWAY)
+
+        chapter_count = world.book.chapter_count if world.book_id else 0
+        start_chapter = min(data.get('start_chapter') or 1, chapter_count) if chapter_count else 1
+        character = Character.objects.create(
+            world=world,
+            name=data['name'],
+            role=data['role'] or 'Adventurer',
+            current_location=starting_location(world, start_chapter),
+        )
+        opening = next((c for c in chapter_list(world.book) if c['index'] == start_chapter), None) if world.book_id else None
+        session = StorySession.objects.create(
+            world=world,
+            character=character,
+            title=f"{character.name}'s Adventure",
+            current_chapter=start_chapter,
+            objective=opening_objective(opening),
+        )
+        return Response(
+            {
+                'session': StorySessionSerializer(session).data,
+                'world': WorldSerializer(world).data,
+                'book_title': path.stem,
+                'state': StoryService.state_snapshot(character, session),
+                'chapter': opening,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class SessionStartView(APIView):
@@ -294,6 +484,7 @@ class SessionInteractView(APIView):
                 'state': result.state,
                 'session_status': result.session_status,
                 'history_saved': result.history_saved,
+                'objective': result.objective,
             },
             status=status.HTTP_200_OK,
         )
@@ -392,7 +583,7 @@ class MarketBootstrapView(APIView):
 
         ai_error = None
         try:
-            ai_data = OpenAIService().generate_market_candidates(
+            ai_data = get_llm_service().generate_market_candidates(
                 world_name=world.name,
                 world_lore_summary=world.lore_summary,
                 book_title=book.title,

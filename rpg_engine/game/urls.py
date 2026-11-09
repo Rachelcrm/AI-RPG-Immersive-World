@@ -2,10 +2,15 @@ from django.urls import path
 
 from .views import (
     AITradeView,
+    BookProcessView,
     BookUploadView,
     CharacterCreateView,
     HealthView,
+    LocalBookListView,
     MarketBootstrapView,
+    PlayChaptersView,
+    PlayPrepareView,
+    PlayStartView,
     SessionInteractView,
     SessionStartView,
     SessionStateView,
@@ -18,6 +23,11 @@ from .views import (
 urlpatterns = [
     path('health/', HealthView.as_view(), name='health'),
     path('books/upload/', BookUploadView.as_view(), name='book-upload'),
+    path('books/local/', LocalBookListView.as_view(), name='book-local-list'),
+    path('books/<int:book_id>/process/', BookProcessView.as_view(), name='book-process'),
+    path('play/prepare/', PlayPrepareView.as_view(), name='play-prepare'),
+    path('play/chapters/', PlayChaptersView.as_view(), name='play-chapters'),
+    path('play/start/', PlayStartView.as_view(), name='play-start'),
     path('worlds/generate/', WorldGenerateView.as_view(), name='world-generate'),
     path(
         'worlds/<int:world_id>/components/generate/',

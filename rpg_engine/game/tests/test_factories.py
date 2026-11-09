@@ -211,8 +211,8 @@ def test_world_generate_populates_locations_and_npcs(api, book):
         'locations': ['Ruin Hall', 'Ash Market'],
         'main_conflict': 'C',
     }
-    with patch('game.views.OpenAIService.generate_world', return_value=fake_world), patch(
-        'game.services.factories.OpenAIService.generate_components',
+    with patch('game.services.llm_service.LLMService.generate_world', return_value=fake_world), patch(
+        'game.services.llm_service.LLMService.generate_components',
         return_value=[{'name': 'Garr', 'role': 'Guard'}],
     ):
         resp = api.post('/api/worlds/generate/', {'book_id': book.id}, format='json')
@@ -226,8 +226,8 @@ def test_world_generate_populates_locations_and_npcs(api, book):
 
 def test_world_generate_survives_npc_generation_failure(api, book):
     fake_world = {'world_name': 'W', 'lore_summary': '', 'factions': [], 'locations': ['X'], 'main_conflict': ''}
-    with patch('game.views.OpenAIService.generate_world', return_value=fake_world), patch(
-        'game.services.factories.OpenAIService.generate_components', side_effect=ValueError('no key')
+    with patch('game.services.llm_service.LLMService.generate_world', return_value=fake_world), patch(
+        'game.services.llm_service.LLMService.generate_components', side_effect=ValueError('no key')
     ):
         resp = api.post('/api/worlds/generate/', {'book_id': book.id}, format='json')
     assert resp.status_code == 201
@@ -247,7 +247,7 @@ def test_component_endpoint_with_spec(api, world):
 
 def test_component_endpoint_with_ai(api, world):
     with patch(
-        'game.services.factories.OpenAIService.generate_components',
+        'game.services.llm_service.LLMService.generate_components',
         return_value=[{'name': 'Sunken Vault', 'danger_level': 4}],
     ):
         resp = api.post(
@@ -266,6 +266,6 @@ def test_component_endpoint_errors(api, world, session):
         ).status_code
         == 400
     )
-    with patch('game.services.factories.OpenAIService.generate_components', side_effect=RuntimeError('down')):
+    with patch('game.services.llm_service.LLMService.generate_components', side_effect=RuntimeError('down')):
         resp = api.post(f'/api/worlds/{world.id}/components/generate/', {'kind': 'npc'}, format='json')
     assert resp.status_code == 502

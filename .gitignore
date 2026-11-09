@@ -125,3 +125,7 @@ grafana_data/
 
 # Local development files
 .local/
+
+# Copyrighted novel text used only for local testing (public-domain samples stay tracked)
+rpg_engine/samples/十日终焉*.txt
+rpg_engine/backups/

@@ -1,0 +1,10 @@
+.venv
+.env
+*.sqlite3
+__pycache__
+*.pyc
+.pytest_cache
+.git
+backups
+# the full novel stays local until its scan is paid for deliberately
+samples/十日终焉.txt
